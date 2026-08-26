@@ -1,0 +1,252 @@
+/* ==========================================================================
+   Feedmix Energy Tracker — visual identity
+   Concept: a plant control panel. Dark instrument-bar chrome, amber
+   indicator lamps for running machines, monospace LED-style digits for
+   kWh readouts, condensed industrial type for labels and nav.
+   Palette:  #0E2027 panel  ·  #F2A93B amber  ·  #157A72 teal
+             #C0392B alert  ·  #EEF2F3 bg    ·  #10242E ink
+   Type:     Barlow Condensed (display/labels) · Inter (body) · IBM Plex Mono (data)
+   ========================================================================== */
+
+:root{
+  --bg:#EEF2F3;
+  --surface:#FFFFFF;
+  --panel:#0E2027;
+  --panel-2:#16323C;
+  --ink:#10242E;
+  --muted:#5B6C72;
+  --line:#D9E1E4;
+  --amber:#F2A93B;
+  --amber-glow:rgba(242,169,59,0.55);
+  --teal:#157A72;
+  --alert:#C0392B;
+  --radius:8px;
+  --font-display:'Barlow Condensed', sans-serif;
+  --font-body:'Inter', sans-serif;
+  --font-mono:'IBM Plex Mono', monospace;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+.hidden{display:none !important;}
+h2,h3,h4{font-family:var(--font-display);letter-spacing:.02em;margin:0 0 6px;}
+h2{text-transform:uppercase;font-size:1.3rem;font-weight:700;color:var(--panel);}
+h3{text-transform:uppercase;font-size:1.05rem;font-weight:600;display:flex;align-items:center;color:var(--panel);}
+h4{text-transform:uppercase;font-size:.85rem;color:var(--muted);margin-top:18px;letter-spacing:.05em;}
+:focus-visible{outline:3px solid var(--teal);outline-offset:2px;}
+
+/* ---------- brand / header ---------- */
+.brandLamp{
+  width:10px;height:10px;border-radius:50%;background:var(--amber);display:inline-block;
+  box-shadow:0 0 8px 2px var(--amber-glow);flex-shrink:0;
+}
+header#topbar{
+  background:var(--panel);color:#fff;padding:10px 16px;position:sticky;top:0;z-index:20;
+  box-shadow:0 2px 6px rgba(0,0,0,0.18);
+}
+.brandRow{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.brand{
+  font-family:var(--font-display);font-weight:700;font-size:1.15rem;letter-spacing:.06em;
+  text-transform:uppercase;display:flex;align-items:center;gap:9px;
+}
+#mobileNavToggle{display:none;background:none;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:1rem;cursor:pointer;}
+
+#mainNav{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px;}
+.navBtn{
+  background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);border:1px solid transparent;
+  padding:8px 14px;border-radius:6px;font-family:var(--font-display);text-transform:uppercase;
+  letter-spacing:.04em;font-weight:600;font-size:.85rem;cursor:pointer;transition:background .15s;
+}
+.navBtn:hover{background:rgba(255,255,255,0.16);}
+.navBtn.active{background:var(--amber);color:var(--panel);}
+
+.userbox{display:flex;align-items:center;gap:10px;font-size:.8rem;color:rgba(255,255,255,.85);}
+#logoutBtn{
+  background:transparent;border:1px solid rgba(255,255,255,0.35);color:#fff;padding:6px 10px;
+  border-radius:6px;cursor:pointer;font-size:.8rem;
+}
+#logoutBtn:hover{background:rgba(255,255,255,0.1);}
+
+/* ---------- live indicator ---------- */
+.liveIndicator{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.7);}
+.liveDot{width:7px;height:7px;border-radius:50%;background:#3FBF7F;display:inline-block;flex-shrink:0;
+  box-shadow:0 0 6px 1px rgba(63,191,127,0.7);animation:livePulse 2s ease-in-out infinite;}
+.liveDot.small{margin-right:6px;}
+@keyframes livePulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+/* ---------- loading overlay ---------- */
+.loadingOverlay{
+  position:fixed;inset:0;background:var(--panel);display:flex;align-items:center;justify-content:center;
+  z-index:200;color:#fff;
+}
+.loadingBox{text-align:center;}
+.loadingBox p{margin-top:14px;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.8);}
+.brandLamp.pulse{width:16px;height:16px;animation:livePulse 1.1s ease-in-out infinite;}
+
+/* ---------- layout scaffolding ---------- */
+.screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);}
+.view{padding:16px;max-width:960px;margin:0 auto;}
+.viewHead{margin-bottom:6px;}
+
+/* ---------- cards ---------- */
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px;margin:14px 0;position:relative;box-shadow:0 1px 2px rgba(16,36,46,0.05);
+}
+.card::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0;
+  background:linear-gradient(90deg,var(--amber),var(--teal));
+}
+.card.narrow{max-width:420px;width:100%;}
+.cardEyebrow{
+  font-family:var(--font-mono);font-size:.72rem;color:var(--teal);background:rgba(21,122,114,0.1);
+  padding:2px 7px;border-radius:4px;margin-right:9px;font-weight:600;
+}
+
+/* ---------- login ---------- */
+.loginCard{text-align:center;}
+.loginBrand{
+  font-family:var(--font-display);font-weight:700;font-size:1.4rem;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--panel);display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:2px;
+}
+.loginCard label{text-align:left;}
+
+/* ---------- forms ---------- */
+label{display:block;margin:10px 0;font-size:.78rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em;font-family:var(--font-display);}
+input,select{
+  width:100%;padding:11px;margin-top:5px;border:1px solid var(--line);border-radius:6px;
+  font-size:1rem;background:#fff;color:var(--ink);font-family:var(--font-body);
+  text-transform:none;letter-spacing:normal;font-weight:400;
+}
+input.mono{font-family:var(--font-mono);}
+input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(21,122,114,0.15);outline:none;}
+.fieldRow{display:flex;gap:12px;}
+.fieldRow label{flex:1;}
+
+button{font-family:inherit;}
+button.primary{
+  background:var(--amber);color:var(--panel);border:none;padding:12px 16px;border-radius:6px;
+  font-family:var(--font-display);text-transform:uppercase;letter-spacing:.04em;font-weight:700;
+  font-size:.95rem;cursor:pointer;margin-top:12px;width:100%;box-shadow:0 2px 0 #b97c1f;
+  transition:transform .05s;
+}
+button.primary:active{transform:translateY(2px);box-shadow:0 0 0 #b97c1f;}
+button.primary:hover{filter:brightness(1.04);}
+
+.hint{color:var(--muted);font-size:.8rem;margin:4px 0;}
+.error{color:var(--alert);font-size:.85rem;font-weight:600;}
+.success{color:var(--teal);font-size:.85rem;font-weight:600;}
+
+/* ---------- dashboard ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px;}
+.filterbar{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0;}
+.filterbar button{
+  border:1px solid var(--line);background:#fff;padding:7px 14px;border-radius:20px;cursor:pointer;
+  font-size:.78rem;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-weight:600;color:var(--muted);
+}
+.filterbar button.active{background:var(--amber);color:var(--panel);border-color:var(--amber);}
+
+.plantCard h3{justify-content:space-between;margin-bottom:12px;}
+.meterChip{
+  background:var(--panel);color:var(--amber);font-family:var(--font-mono);font-weight:600;
+  padding:6px 11px;border-radius:6px;font-size:.92rem;letter-spacing:.02em;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);text-shadow:0 0 7px var(--amber-glow);white-space:nowrap;
+}
+.machineRow{
+  display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--line);
+  font-size:.87rem;
+}
+.machineRow:first-of-type{border-top:none;}
+.machineName{display:flex;align-items:center;}
+.lamp{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:9px;background:#C3CDD1;flex-shrink:0;}
+.lamp.on{background:var(--amber);box-shadow:0 0 7px 2px var(--amber-glow);}
+.machineStat{font-family:var(--font-mono);font-size:.82rem;color:var(--muted);}
+.machineStat .kwh{color:var(--ink);font-weight:600;}
+
+/* ---------- data entry: run log ---------- */
+.runLogRow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:1px solid var(--line);gap:10px;flex-wrap:wrap;}
+.runLogRow:first-child{border-top:none;}
+.runLogRow .name{font-weight:700;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.02em;font-size:.95rem;}
+.runLogRow small{display:block;color:var(--muted);font-weight:400;font-family:var(--font-body);text-transform:none;letter-spacing:normal;font-size:.78rem;}
+.btnRow{display:flex;gap:8px;}
+.btnStart,.btnStop{
+  border:none;padding:9px 16px;border-radius:6px;cursor:pointer;font-family:var(--font-display);
+  text-transform:uppercase;letter-spacing:.03em;font-weight:700;font-size:.82rem;box-shadow:0 2px 0 rgba(0,0,0,0.15);
+}
+.btnStart{background:var(--teal);color:#fff;}
+.btnStop{background:var(--alert);color:#fff;}
+.btnStart:disabled,.btnStop:disabled{opacity:.3;cursor:not-allowed;box-shadow:none;}
+.btnStart:active:not(:disabled),.btnStop:active:not(:disabled){transform:translateY(2px);box-shadow:none;}
+
+/* ---------- tables (admin) ---------- */
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px;}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;}
+th{background:var(--bg);font-family:var(--font-display);text-transform:uppercase;font-size:.75rem;letter-spacing:.03em;color:var(--muted);}
+
+/* ---------- confirm modal ---------- */
+.modalOverlay{
+  position:fixed;inset:0;background:rgba(14,32,39,0.6);display:flex;align-items:center;justify-content:center;
+  z-index:100;padding:20px;
+}
+.modal{
+  background:#fff;border-radius:var(--radius);padding:22px;max-width:400px;width:100%;position:relative;
+  box-shadow:0 12px 32px rgba(0,0,0,0.25);
+}
+.modal::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0;background:var(--alert);}
+.modal h3{margin-bottom:8px;}
+.modalBtnRow{display:flex;gap:10px;margin-top:14px;}
+.modalBtnRow button{flex:1;}
+#confirmCancel{
+  background:#fff;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:11px;
+  font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-weight:700;cursor:pointer;
+}
+button.danger{background:var(--alert);color:#fff;box-shadow:0 2px 0 #8f2a1f;}
+
+/* ---------- admin: plant / machine management rows ---------- */
+.plantMgmtList{margin-bottom:6px;}
+.mgmtRow{
+  display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line);
+  gap:10px;
+}
+.mgmtRow:first-child{border-top:none;}
+.mgmtRow strong{display:block;font-size:.92rem;}
+.mgmtRow small{display:block;color:var(--muted);font-size:.76rem;margin-top:2px;}
+.btnIconDanger{
+  background:#fff;border:1px solid var(--alert);color:var(--alert);padding:6px 12px;border-radius:6px;
+  font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-weight:700;font-size:.72rem;
+  cursor:pointer;white-space:nowrap;transition:background .15s;
+}
+.btnIconDanger:hover{background:var(--alert);color:#fff;}
+.btnIconDanger:disabled{opacity:.35;cursor:not-allowed;background:#fff;color:var(--alert);}
+.btnSmall{
+  background:#fff;border:1px solid var(--line);color:var(--ink);padding:6px 12px;border-radius:6px;
+  font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-weight:700;font-size:.72rem;
+  cursor:pointer;white-space:nowrap;margin-right:6px;
+}
+.btnSmall:hover{border-color:var(--teal);color:var(--teal);}
+.btnSmall:disabled{opacity:.35;cursor:not-allowed;}
+.tableActions{display:flex;flex-wrap:wrap;gap:0;white-space:nowrap;}
+.muted{color:var(--muted);}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  background:var(--panel);color:#fff;padding:11px 20px;border-radius:6px;font-size:.85rem;z-index:150;
+  border-left:3px solid var(--amber);box-shadow:0 6px 16px rgba(0,0,0,0.25);max-width:90vw;
+}
+.toast-success{border-left-color:#3FBF7F;}
+.toast-error{border-left-color:var(--alert);}
+
+/* ---------- responsive ---------- */
+@media (max-width:640px){
+  #mobileNavToggle{display:inline-block;}
+  #mainNav{display:none;flex-direction:column;}
+  #mainNav.navOpen{display:flex;}
+  .navBtn{width:100%;text-align:left;}
+  .fieldRow{flex-direction:column;gap:0;}
+  .userbox{font-size:.72rem;}
+}

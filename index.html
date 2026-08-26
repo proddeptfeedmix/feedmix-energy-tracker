@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feedmix Energy Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- Full-screen loading overlay, shown during initial boot/login only -->
+<div id="loadingOverlay" class="loadingOverlay hidden">
+  <div class="loadingBox">
+    <span class="brandLamp pulse"></span>
+    <p>Loading plant data…</p>
+  </div>
+</div>
+
+<header id="topbar" class="hidden">
+  <div class="brandRow">
+    <div class="brand"><span class="brandLamp"></span>FEEDMIX ENERGY TRACKER</div>
+    <button id="mobileNavToggle" aria-label="Menu">☰</button>
+  </div>
+  <nav id="mainNav">
+    <button data-view="dashboard" class="navBtn active">Dashboard</button>
+    <button data-view="entry" class="navBtn">Data Entry</button>
+    <button data-view="reports" class="navBtn">Reports</button>
+    <button data-view="admin" class="navBtn adminOnly hidden">Admin</button>
+  </nav>
+  <div class="userbox">
+    <span id="whoami"></span>
+    <span id="liveIndicator" class="liveIndicator" title="Live connection to the database">
+      <span class="liveDot"></span>Live
+    </span>
+    <button id="logoutBtn">Logout</button>
+  </div>
+</header>
+
+<!-- LOGIN -->
+<section id="loginScreen" class="screen">
+  <div class="card narrow loginCard">
+    <div class="loginBrand"><span class="brandLamp"></span>FEEDMIX ENERGY TRACKER</div>
+    <p class="hint">Significant electrical load &amp; energy monitoring</p>
+    <label>Username<input id="loginUser" autocomplete="username"></label>
+    <label>Password<input id="loginPass" type="password" autocomplete="current-password"></label>
+    <button id="loginBtn" class="primary">Sign in</button>
+    <p id="loginError" class="error hidden"></p>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<main id="view-dashboard" class="view hidden">
+  <div class="viewHead">
+    <h2>Real-Time Dashboard</h2>
+    <p class="hint"><span class="liveDot small"></span>Live · updates instantly · last refresh <span id="dashUpdated">–</span></p>
+  </div>
+  <div id="plantFilterBar" class="filterbar"></div>
+  <div id="dashboardGrid" class="grid"></div>
+</main>
+
+<!-- DATA ENTRY -->
+<main id="view-entry" class="view hidden">
+  <div class="viewHead"><h2>Data Entry</h2></div>
+  <label>Plant
+    <select id="entryPlantSelect"></select>
+  </label>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">01</span>Machine Run Log</h3>
+    <p class="hint">Start / stop timestamps, logged in real time.</p>
+    <div id="runLogList"></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">02</span>Shift-Based Hours</h3>
+    <p class="hint">Enter total hours operated for a shift instead of live logging.</p>
+    <form id="shiftForm">
+      <label>Machine<select id="shiftMachine"></select></label>
+      <div class="fieldRow">
+        <label>Date<input id="shiftDate" type="date"></label>
+        <label>Shift
+          <select id="shiftName">
+            <option>Shift 1</option><option>Shift 2</option><option>Shift 3</option>
+          </select>
+        </label>
+      </div>
+      <label>Total Hours Operated<input id="shiftHours" type="number" step="0.1" min="0" max="24" class="mono"></label>
+      <button type="submit" class="primary">Save Shift Hours</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">03</span>Actual Power Reading</h3>
+    <p class="hint">Measured kW overrides the machine's rated kW for that day's energy calculation.</p>
+    <form id="readingForm">
+      <label>Machine<select id="readingMachine"></select></label>
+      <div class="fieldRow">
+        <label>Date<input id="readingDate" type="date"></label>
+        <label>Measured Power (kW)<input id="readingKW" type="number" step="0.01" min="0" class="mono"></label>
+      </div>
+      <button type="submit" class="primary">Save Reading</button>
+    </form>
+  </div>
+  <p id="entryMsg" class="success hidden"></p>
+</main>
+
+<!-- REPORTS -->
+<main id="view-reports" class="view hidden">
+  <div class="viewHead"><h2>PDF Reports</h2></div>
+  <div class="card narrow">
+    <label>Plant
+      <select id="reportPlantSelect"><option value="ALL">All Plants</option></select>
+    </label>
+    <div class="fieldRow">
+      <label>From<input id="reportFrom" type="date"></label>
+      <label>To<input id="reportTo" type="date"></label>
+    </div>
+    <button id="generateReportBtn" class="primary">Generate PDF Report</button>
+    <p id="reportMsg" class="hint"></p>
+  </div>
+</main>
+
+<!-- ADMIN -->
+<main id="view-admin" class="view hidden">
+  <div class="viewHead"><h2>Admin</h2></div>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">01</span>Plants</h3>
+    <p class="hint">Deleting a plant permanently deletes its machines and all logged history for it.</p>
+    <div id="adminPlantsList" class="plantMgmtList"></div>
+    <h4>Add Plant</h4>
+    <form id="addPlantForm">
+      <label>Plant Name<input id="newPlantName" required placeholder="e.g. Plant 5"></label>
+      <button type="submit" class="primary">Add Plant</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">02</span>Machines</h3>
+    <div id="adminMachinesList"></div>
+    <h4>Add Machine</h4>
+    <form id="addMachineForm">
+      <label>Plant<select id="newMachinePlant"></select></label>
+      <label>Machine Name<input id="newMachineName" required></label>
+      <div class="fieldRow">
+        <label>Category<input id="newMachineCategory" required></label>
+        <label>Rated Power (kW)<input id="newMachineKW" type="number" step="0.01" min="0" required class="mono"></label>
+      </div>
+      <button type="submit" class="primary" id="addMachineBtn">Add Machine (max 10/plant)</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3><span class="cardEyebrow">03</span>Users</h3>
+    <div id="adminUsersList"></div>
+    <h4>Add User</h4>
+    <form id="addUserForm">
+      <label>Full Name<input id="newUserName" required></label>
+      <div class="fieldRow">
+        <label>Username<input id="newUserUsername" required></label>
+        <label>Password<input id="newUserPassword" type="password" required></label>
+      </div>
+      <div class="fieldRow">
+        <label>Role
+          <select id="newUserRole">
+            <option value="technician">Plant Technician</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label>Plant (technician only)<select id="newUserPlant"></select></label>
+      </div>
+      <button type="submit" class="primary">Add User</button>
+    </form>
+  </div>
+</main>
+
+<!-- Generic confirm dialog, reused for every destructive action -->
+<div id="confirmModal" class="modalOverlay hidden">
+  <div class="modal">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p class="hint" id="confirmMessage"></p>
+    <div class="modalBtnRow">
+      <button id="confirmCancel">Cancel</button>
+      <button id="confirmOk" class="primary danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/config.js"></script>
+<script src="js/supabase-store.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/data.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
