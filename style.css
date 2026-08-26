@@ -166,6 +166,8 @@ button.primary:hover{filter:brightness(1.04);}
 .lamp.on{background:var(--amber);box-shadow:0 0 7px 2px var(--amber-glow);}
 .machineStat{font-family:var(--font-mono);font-size:.82rem;color:var(--muted);}
 .machineStat .kwh{color:var(--ink);font-weight:600;}
+.elapsed{font-family:var(--font-mono);color:var(--amber);font-weight:600;}
+.runLogRow .elapsed{font-size:.8rem;margin-top:3px;}
 
 /* ---------- data entry: run log ---------- */
 .runLogRow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:1px solid var(--line);gap:10px;flex-wrap:wrap;}
