@@ -76,24 +76,24 @@ const STORE = {
     return running;
   },
 
-  /* Pair start/stop events chronologically into total hours for a date. */
+  /* Pair start/stop events chronologically into total hours for a date.
+   * Splits out the still-running segment (if any) so callers can update
+   * a live on-screen timer without re-querying the database every tick. */
   hoursFromEvents(plantId, machineId, dateStr){
     const dayEvents = this.events
       .filter(e => e.plant === plantId && e.machine === machineId && e.timestamp.slice(0, 10) === dateStr)
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    let hours = 0, startTs = null;
+    let baseHours = 0, startTs = null;
     for(const e of dayEvents){
       if(e.type === "start"){ startTs = new Date(e.timestamp); }
       else if(e.type === "stop" && startTs){
-        hours += (new Date(e.timestamp) - startTs) / 3600000;
+        baseHours += (new Date(e.timestamp) - startTs) / 3600000;
         startTs = null;
       }
     }
-    if(startTs && dateStr === this.todayStr()){
-      // still running: count up to now
-      hours += (Date.now() - startTs) / 3600000;
-    }
-    return { hours, hasEvents: dayEvents.length > 0 };
+    const openStart = (startTs && dateStr === this.todayStr()) ? startTs : null;
+    const liveHours = openStart ? (Date.now() - openStart) / 3600000 : 0;
+    return { hours: baseHours + liveHours, baseHours, openStart, hasEvents: dayEvents.length > 0 };
   },
 
   hoursFromShifts(plantId, machineId, dateStr){
@@ -123,6 +123,22 @@ const STORE = {
     const hours = this.operatingHours(plantId, machineId, dateStr);
     const kw = this.powerForDate(plantId, machineId, dateStr, ratedKW);
     return { hours, kw, kwh: hours * kw };
+  },
+
+  /* Same as energyKWh, but also returns the open start time (if the
+   * machine is running right now) and the kWh already banked before this
+   * run started, so the UI can tick the total up live without hitting
+   * the database every second. */
+  liveEnergyState(plantId, machineId, dateStr, ratedKW){
+    const ev = this.hoursFromEvents(plantId, machineId, dateStr);
+    const kw = this.powerForDate(plantId, machineId, dateStr, ratedKW);
+    const baseHours = ev.hasEvents ? ev.baseHours : this.hoursFromShifts(plantId, machineId, dateStr);
+    return {
+      kw,
+      baseKwh: baseHours * kw,
+      openStart: ev.openStart, // Date or null
+      kwh: (baseHours * kw) + (ev.openStart ? (Date.now() - ev.openStart) / 3600000 * kw : 0)
+    };
   },
 
   dateRange(fromStr, toStr){

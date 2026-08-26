@@ -3,6 +3,41 @@ let pollTimer = null;
 let currentEntryPlant = null;
 let dashboardFilter = "ALL";
 
+/* Format milliseconds as h:mm:ss for the live run timers. */
+function formatElapsed(ms){
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/* Ticks every second: updates any on-screen "elapsed" timer and any
+ * running machine's live kWh figure, purely client-side (no DB calls),
+ * so Start/Stop feels instantly real-time without hammering Supabase. */
+function tickLiveTimers(){
+  document.querySelectorAll(".elapsed[data-start]").forEach(el => {
+    const start = new Date(el.dataset.start);
+    if(isNaN(start)) return;
+    el.textContent = (el.dataset.label || "") + formatElapsed(Date.now() - start);
+  });
+  document.querySelectorAll(".kwh[data-start]").forEach(el => {
+    const start = new Date(el.dataset.start);
+    if(isNaN(start)) return;
+    const base = Number(el.dataset.baseKwh || 0);
+    const kw = Number(el.dataset.kw || 0);
+    const liveKwh = base + ((Date.now() - start) / 3600000) * kw;
+    el.textContent = liveKwh.toFixed(1);
+  });
+  // Keep each plant's total kWh chip in sync with its machines while ticking.
+  document.querySelectorAll(".plantCard").forEach(card => {
+    const total = [...card.querySelectorAll(".kwh")].reduce((sum, el) => sum + (parseFloat(el.textContent) || 0), 0);
+    const chip = card.querySelector(".meterChip");
+    if(chip) chip.textContent = `${total.toFixed(1)} kWh`;
+  });
+}
+setInterval(tickLiveTimers, 1000);
+
 function toast(msg, type = "info"){
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -169,12 +204,13 @@ function renderDashboard(){
     const machines = STORE.machinesForPlant(plant.id);
     let plantKWh = 0;
     const rowsHtml = machines.map(m => {
-      const running = STORE.isRunning(plant.id, m.id);
-      const { kwh } = STORE.energyKWh(plant.id, m.id, today, m.ratedKW);
+      const { kw, baseKwh, openStart, kwh } = STORE.liveEnergyState(plant.id, m.id, today, m.ratedKW);
+      const running = !!openStart;
       plantKWh += kwh;
+      const startAttr = running ? ` data-start="${openStart.toISOString()}" data-base-kwh="${baseKwh}" data-kw="${kw}"` : "";
       return `<div class="machineRow">
         <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
-        <span class="machineStat">${running ? "RUNNING" : "STOPPED"} · <span class="kwh">${kwh.toFixed(1)}</span> kWh</span>
+        <span class="machineStat">${running ? "RUNNING" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
       </div>`;
     }).join("") || "<p class='hint'>No machines configured for this plant yet.</p>";
 
@@ -212,11 +248,15 @@ function renderEntry(){
 function renderEntryDetail(){
   const machines = currentEntryPlant ? STORE.machinesForPlant(currentEntryPlant) : [];
 
+  const today = STORE.todayStr();
   const logEl = document.getElementById("runLogList");
   logEl.innerHTML = machines.map(m => {
-    const running = STORE.isRunning(currentEntryPlant, m.id);
+    const { openStart } = STORE.liveEnergyState(currentEntryPlant, m.id, today, m.ratedKW);
+    const running = !!openStart;
     return `<div class="runLogRow">
-      <div><span class="name">${m.name}</span><small>${m.category} · ${m.ratedKW} kW rated</small></div>
+      <div><span class="name">${m.name}</span><small>${m.category} · ${m.ratedKW} kW rated</small>
+        ${running ? `<div class="elapsed" data-start="${openStart.toISOString()}" data-label="Running: ">Running: 0:00:00</div>` : ""}
+      </div>
       <div class="btnRow">
         <button class="btnStart" data-m="${m.id}" ${running ? "disabled" : ""}>Start</button>
         <button class="btnStop" data-m="${m.id}" ${running ? "" : "disabled"}>Stop</button>
