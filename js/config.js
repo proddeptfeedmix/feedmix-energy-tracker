@@ -8,6 +8,6 @@
  * Find them in your Supabase dashboard: Project Settings → API.
  */
 const APP_CONFIG = {
-  supabaseUrl: "https://kasznkerzhlcrscfcqpp.supabase.co",
-  supabaseAnonKey: "sb_publishable_mW0naMG3iVHLoh3QpYNi_A_AcGdTrhf"
+  supabaseUrl: "https://gaezkbtkmizocavecsmp.supabase.co",
+  supabaseAnonKey: "sb_publishable_b1cDV7QOcIxfhQZxyy83yg_TeuepLU4"
 };
