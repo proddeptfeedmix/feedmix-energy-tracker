@@ -24,7 +24,7 @@
 <header id="topbar" class="hidden">
   <div class="brandRow">
     <div class="brand"><span class="brandLamp"></span>FEEDMIX ENERGY TRACKER</div>
-    <button id="mobileNavToggle" aria-label="Menu">☰</button>
+    <button id="mobileNavToggle" aria-label="Menu" aria-expanded="false">☰</button>
   </div>
   <nav id="mainNav">
     <button data-view="dashboard" class="navBtn active">Dashboard</button>
@@ -35,7 +35,7 @@
   <div class="userbox">
     <span id="whoami"></span>
     <span id="liveIndicator" class="liveIndicator" title="Live connection to the database">
-      <span class="liveDot"></span>Live
+      <span id="liveDot" class="liveDot"></span><span id="liveText">Live</span>
     </span>
     <button id="logoutBtn">Logout</button>
   </div>
@@ -49,7 +49,7 @@
     <label>Username<input id="loginUser" autocomplete="username"></label>
     <label>Password<input id="loginPass" type="password" autocomplete="current-password"></label>
     <button id="loginBtn" class="primary">Sign in</button>
-    <p id="loginError" class="error hidden"></p>
+    <p id="loginError" class="error hidden" role="alert"></p>
   </div>
 </section>
 
@@ -58,6 +58,7 @@
   <div class="viewHead">
     <h2>Real-Time Dashboard</h2>
     <p class="hint"><span class="liveDot small"></span>Live · updates instantly · last refresh <span id="dashUpdated">–</span></p>
+    <p class="hint legend"><span class="lamp on legendLamp"></span>Running &nbsp;&nbsp;<span class="lamp legendLamp"></span>Stopped &nbsp;&nbsp;<span class="sourceTag measured">MEASURED</span> = from a logged reading &nbsp;&nbsp;<span class="sourceTag rated">RATED</span> = estimated from nameplate kW</p>
   </div>
   <div id="plantFilterBar" class="filterbar"></div>
   <div id="dashboardGrid" class="grid"></div>
@@ -163,7 +164,7 @@
       <label>Full Name<input id="newUserName" required></label>
       <div class="fieldRow">
         <label>Username<input id="newUserUsername" required></label>
-        <label>Password<input id="newUserPassword" type="password" required></label>
+        <label>Password<input id="newUserPassword" type="password" minlength="6" required></label>
       </div>
       <div class="fieldRow">
         <label>Role
@@ -191,7 +192,7 @@
   </div>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
 <script src="js/config.js"></script>
 <script src="js/supabase-store.js"></script>

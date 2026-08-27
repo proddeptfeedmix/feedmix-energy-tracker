@@ -75,6 +75,8 @@ header#topbar{
 .liveDot{width:7px;height:7px;border-radius:50%;background:#3FBF7F;display:inline-block;flex-shrink:0;
   box-shadow:0 0 6px 1px rgba(63,191,127,0.7);animation:livePulse 2s ease-in-out infinite;}
 .liveDot.small{margin-right:6px;}
+.liveIndicator.offline .liveDot{background:var(--alert);box-shadow:0 0 6px 1px rgba(192,57,43,0.6);animation:none;}
+.liveIndicator.connecting .liveDot{background:#C3CDD1;box-shadow:none;}
 @keyframes livePulse{0%,100%{opacity:1;}50%{opacity:.35;}}
 
 /* ---------- loading overlay ---------- */
@@ -124,6 +126,7 @@ input,select{
 }
 input.mono{font-family:var(--font-mono);}
 input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(21,122,114,0.15);outline:none;}
+input:disabled,select:disabled{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 .fieldRow{display:flex;gap:12px;}
 .fieldRow label{flex:1;}
 
@@ -168,6 +171,12 @@ button.primary:hover{filter:brightness(1.04);}
 .machineStat .kwh{color:var(--ink);font-weight:600;}
 .elapsed{font-family:var(--font-mono);color:var(--amber);font-weight:600;}
 .runLogRow .elapsed{font-size:.8rem;margin-top:3px;}
+.runningCount{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);font-weight:600;margin:-6px 0 10px;}
+.sourceTag{font-family:var(--font-mono);font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.03em;margin-left:6px;vertical-align:1px;}
+.sourceTag.measured{background:rgba(21,122,114,.12);color:var(--teal);}
+.sourceTag.rated{background:rgba(91,108,114,.12);color:var(--muted);}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:.72rem;}
+.legendLamp{margin:0 3px 0 0;}
 
 /* ---------- data entry: run log ---------- */
 .runLogRow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:1px solid var(--line);gap:10px;flex-wrap:wrap;}
