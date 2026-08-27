@@ -63,8 +63,11 @@ function toast(msg, type = "info"){
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.className = `toast toast-${type}`;
+  // Force reflow
+  void t.offsetWidth;
+  t.classList.add("show");
   clearTimeout(toast._h);
-  toast._h = setTimeout(() => t.classList.add("hidden"), 3000);
+  toast._h = setTimeout(() => t.classList.remove("show"), 3500);
 }
 
 function setLoading(isLoading, message){
@@ -86,18 +89,47 @@ function confirmDialog(title, message, okLabel = "Delete"){
     const cleanup = (val) => { modal.classList.add("hidden"); resolve(val); };
     okBtn.onclick = () => cleanup(true);
     document.getElementById("confirmCancel").onclick = () => cleanup(false);
+    // Close on overlay click
+    modal.onclick = (e) => { if(e.target === modal) cleanup(false); };
+    // Close on Escape
+    const escHandler = (e) => { if(e.key === "Escape") { cleanup(false); document.removeEventListener("keydown", escHandler); } };
+    document.addEventListener("keydown", escHandler);
   });
 }
 
 function showView(name){
-  document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
-  document.getElementById(`view-${name}`).classList.remove("hidden");
+  // Fade out current view
+  const currentView = document.querySelector(".view:not(.hidden)");
+  if(currentView){
+    currentView.style.opacity = "0";
+    currentView.style.transform = "translateY(8px)";
+    setTimeout(() => {
+      document.querySelectorAll(".view").forEach(v => {
+        v.classList.add("hidden");
+        v.style.opacity = "";
+        v.style.transform = "";
+      });
+      const next = document.getElementById(`view-${name}`);
+      next.classList.remove("hidden");
+      next.style.animation = "none";
+      void next.offsetWidth; // force reflow
+      next.style.animation = "";
+    }, 120);
+  } else {
+    document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
+    document.getElementById(`view-${name}`).classList.remove("hidden");
+  }
+
   document.querySelectorAll(".navBtn").forEach(b => b.classList.toggle("active", b.dataset.view === name));
   document.getElementById("mainNav").classList.remove("navOpen");
-  if(name === "dashboard") renderDashboard();
-  if(name === "entry") renderEntry();
-  if(name === "reports") renderReports();
-  if(name === "admin") renderAdmin();
+
+  // Small delay to allow transition
+  setTimeout(() => {
+    if(name === "dashboard") renderDashboard();
+    if(name === "entry") renderEntry();
+    if(name === "reports") renderReports();
+    if(name === "admin") renderAdmin();
+  }, name === "dashboard" && currentView ? 130 : 0);
 }
 
 document.getElementById("mobileNavToggle").addEventListener("click", () => {
@@ -129,6 +161,10 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   }catch(e){
     errEl.textContent = e.message || "Login failed.";
     errEl.classList.remove("hidden");
+    // Shake animation on error
+    const card = document.querySelector(".loginCard");
+    card.style.animation = "shake 0.4s ease-in-out";
+    setTimeout(() => card.style.animation = "", 400);
   }finally{
     btn.disabled = false; btn.textContent = "Sign in";
   }
@@ -136,6 +172,11 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 document.getElementById("loginPass").addEventListener("keydown", e => {
   if(e.key === "Enter") document.getElementById("loginBtn").click();
 });
+
+// Add shake animation style dynamically
+const shakeStyle = document.createElement("style");
+shakeStyle.textContent = `@keyframes shake{0%,100%{transform:translateX(0);}20%{transform:translateX(-8px);}40%{transform:translateX(8px);}60%{transform:translateX(-4px);}80%{transform:translateX(4px);}}`;
+document.head.appendChild(shakeStyle);
 
 document.getElementById("logoutBtn").addEventListener("click", () => {
   AUTH.logout();
@@ -146,6 +187,7 @@ document.getElementById("logoutBtn").addEventListener("click", () => {
   document.getElementById("loginUser").value = "";
   document.getElementById("loginPass").value = "";
   document.getElementById("loginScreen").classList.remove("hidden");
+  toast("Signed out successfully", "success");
 });
 
 async function afterLogin(){
@@ -220,7 +262,7 @@ function renderDashboard(){
   grid.innerHTML = "";
 
   if(!shown.length){
-    grid.innerHTML = "<p class='hint'>No plants configured yet. Ask an admin to add one under Admin → Plants.</p>";
+    grid.innerHTML = `<div class="card emptyState"><p>No plants configured yet.</p><p class="hint">Ask an admin to add one under Admin → Plants.</p></div>`;
   }
 
   shown.forEach(plant => {
@@ -235,9 +277,9 @@ function renderDashboard(){
       const sourceTag = `<span class="sourceTag ${measured ? "measured" : "rated"}" title="${measured ? "Uses a logged actual power reading for today" : "No reading logged today — estimated from this machine's rated kW"}">${measured ? "MEASURED" : "RATED"}</span>`;
       return `<div class="machineRow">
         <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
-        <span class="machineStat">${running ? "RUNNING" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
+        <span class="machineStat">${running ? "<strong style='color:var(--teal)'>RUNNING</strong>" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
       </div>`;
-    }).join("") || "<p class='hint'>No machines configured for this plant yet.</p>";
+    }).join("") || `<div class="emptyState" style="padding:20px"><p class="hint">No machines configured for this plant yet.</p></div>`;
 
     const card = document.createElement("div");
     card.className = "card plantCard";
@@ -261,7 +303,7 @@ function renderEntry(){
   const plants = visiblePlants();
   const plantSel = document.getElementById("entryPlantSelect");
   if(!plants.length){
-    document.getElementById("runLogList").innerHTML = "<p class='hint'>No plant assigned yet — ask an admin.</p>";
+    document.getElementById("runLogList").innerHTML = `<div class="emptyState"><p>No plant assigned yet.</p><p class="hint">Ask an admin to assign you to a plant.</p></div>`;
     return;
   }
   fillPlantSelect(plantSel, plants);
@@ -288,7 +330,7 @@ function renderEntryDetail(){
         <button class="btnStop" data-m="${m.id}" ${running ? "" : "disabled"}>Stop</button>
       </div>
     </div>`;
-  }).join("") || "<p class='hint'>No machines configured for this plant.</p>";
+  }).join("") || `<div class="emptyState"><p class="hint">No machines configured for this plant.</p></div>`;
 
   logEl.querySelectorAll(".btnStart").forEach(b => b.onclick = () => logEvent(b.dataset.m, "start"));
   logEl.querySelectorAll(".btnStop").forEach(b => b.onclick = () => logEvent(b.dataset.m, "stop"));
@@ -309,7 +351,7 @@ async function logEvent(machineId, type){
     await DB.insert("events", record);
     await STORE.refreshLive();
     renderEntryDetail();
-    toast(`${type === "start" ? "Started" : "Stopped"} machine.`, "success");
+    toast(`${type === "start" ? "Started" : "Stopped"} machine successfully`, "success");
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
 }
 
@@ -337,7 +379,7 @@ document.getElementById("shiftForm").addEventListener("submit", async (e) => {
     await DB.insert("shifts", record);
     STORE.shifts.push(STORE._mapShift(record));
     document.getElementById("shiftHours").value = "";
-    showEntryMsg("Shift hours saved.");
+    showEntryMsg("Shift hours saved successfully.");
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
 });
@@ -368,7 +410,7 @@ document.getElementById("readingForm").addEventListener("submit", async (e) => {
     await DB.insert("readings", record);
     STORE.readings.push({ id: record.id, plant: record.plant_id, machine: record.machine_id, date: record.date, timestamp: record.ts, kW: record.kw, by: record.by_username });
     document.getElementById("readingKW").value = "";
-    showEntryMsg("Power reading saved.");
+    showEntryMsg("Power reading saved successfully.");
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
 });
@@ -377,7 +419,7 @@ function showEntryMsg(text){
   const el = document.getElementById("entryMsg");
   el.textContent = text;
   el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 2500);
+  setTimeout(() => el.classList.add("hidden"), 3000);
 }
 
 /* ---------------- Reports ---------------- */
@@ -396,17 +438,27 @@ document.getElementById("generateReportBtn").addEventListener("click", () => {
   const to = document.getElementById("reportTo").value;
   const msg = document.getElementById("reportMsg");
   if(!from || !to || from > to){ msg.textContent = "Please choose a valid date range."; return; }
+  const btn = document.getElementById("generateReportBtn");
+  btn.disabled = true;
+  btn.textContent = "Generating…";
   try{
     const fname = REPORTS.generate(plant, from, to);
     msg.textContent = `Downloaded ${fname}`;
-  }catch(e){ msg.textContent = "Failed to generate report: " + e.message; }
+    msg.style.color = "var(--teal)";
+  }catch(e){ 
+    msg.textContent = "Failed to generate report: " + e.message; 
+    msg.style.color = "var(--alert)";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generate PDF Report";
+  }
 });
 
 /* ---------------- Admin: Plants ---------------- */
 function renderAdminPlants(){
   const plantsEl = document.getElementById("adminPlantsList");
   if(!STORE.config.plants.length){
-    plantsEl.innerHTML = "<p class='hint'>No plants yet — add one below.</p>";
+    plantsEl.innerHTML = `<div class="emptyState" style="padding:20px"><p class="hint">No plants yet — add one below.</p></div>`;
     return;
   }
   plantsEl.innerHTML = STORE.config.plants.map(p => {
@@ -460,17 +512,18 @@ function renderAdminMachines(){
   newMachinePlant.innerHTML = STORE.config.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
 
   if(!STORE.config.plants.length){
-    el.innerHTML = "<p class='hint'>Add a plant first.</p>";
+    el.innerHTML = `<div class="emptyState" style="padding:20px"><p class="hint">Add a plant first.</p></div>`;
     document.getElementById("addMachineBtn").disabled = true;
     return;
   }
+  document.getElementById("addMachineBtn").disabled = false;
 
   el.innerHTML = STORE.config.plants.map(p => {
     const machines = STORE.machinesForPlant(p.id);
     const rows = machines.map(m => `<div class="mgmtRow">
         <div><strong>${m.name}</strong><small>${m.category} · ${m.ratedKW} kW rated</small></div>
         <button class="btnIconDanger" data-machine="${m.id}" data-name="${m.name}" title="Delete machine">Delete</button>
-      </div>`).join("") || "<p class='hint'>No machines yet.</p>";
+      </div>`).join("") || `<div class="emptyState" style="padding:12px 0"><p class="hint">No machines yet.</p></div>`;
     return `<h4>${p.name} (${machines.length}/10)</h4>${rows}`;
   }).join("");
 

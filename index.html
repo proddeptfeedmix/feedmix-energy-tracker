@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0B1A20">
+<meta name="description" content="Feedmix Energy Tracker - Significant electrical load & energy monitoring across plants">
 <title>Feedmix Energy Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,8 +48,8 @@
   <div class="card narrow loginCard">
     <div class="loginBrand"><span class="brandLamp"></span>FEEDMIX ENERGY TRACKER</div>
     <p class="hint">Significant electrical load &amp; energy monitoring</p>
-    <label>Username<input id="loginUser" autocomplete="username"></label>
-    <label>Password<input id="loginPass" type="password" autocomplete="current-password"></label>
+    <label>Username<input id="loginUser" autocomplete="username" placeholder="Enter username"></label>
+    <label>Password<input id="loginPass" type="password" autocomplete="current-password" placeholder="Enter password"></label>
     <button id="loginBtn" class="primary">Sign in</button>
     <p id="loginError" class="error hidden" role="alert"></p>
   </div>
@@ -90,7 +92,7 @@
           </select>
         </label>
       </div>
-      <label>Total Hours Operated<input id="shiftHours" type="number" step="0.1" min="0" max="24" class="mono"></label>
+      <label>Total Hours Operated<input id="shiftHours" type="number" step="0.1" min="0" max="24" class="mono" placeholder="e.g. 8.5"></label>
       <button type="submit" class="primary">Save Shift Hours</button>
     </form>
   </div>
@@ -102,7 +104,7 @@
       <label>Machine<select id="readingMachine"></select></label>
       <div class="fieldRow">
         <label>Date<input id="readingDate" type="date"></label>
-        <label>Measured Power (kW)<input id="readingKW" type="number" step="0.01" min="0" class="mono"></label>
+        <label>Measured Power (kW)<input id="readingKW" type="number" step="0.01" min="0" class="mono" placeholder="e.g. 45.5"></label>
       </div>
       <button type="submit" class="primary">Save Reading</button>
     </form>
@@ -147,10 +149,10 @@
     <h4>Add Machine</h4>
     <form id="addMachineForm">
       <label>Plant<select id="newMachinePlant"></select></label>
-      <label>Machine Name<input id="newMachineName" required></label>
+      <label>Machine Name<input id="newMachineName" required placeholder="e.g. Mixer A"></label>
       <div class="fieldRow">
-        <label>Category<input id="newMachineCategory" required></label>
-        <label>Rated Power (kW)<input id="newMachineKW" type="number" step="0.01" min="0" required class="mono"></label>
+        <label>Category<input id="newMachineCategory" required placeholder="e.g. Motor"></label>
+        <label>Rated Power (kW)<input id="newMachineKW" type="number" step="0.01" min="0" required class="mono" placeholder="e.g. 55"></label>
       </div>
       <button type="submit" class="primary" id="addMachineBtn">Add Machine (max 10/plant)</button>
     </form>
@@ -161,10 +163,10 @@
     <div id="adminUsersList"></div>
     <h4>Add User</h4>
     <form id="addUserForm">
-      <label>Full Name<input id="newUserName" required></label>
+      <label>Full Name<input id="newUserName" required placeholder="e.g. Juan Dela Cruz"></label>
       <div class="fieldRow">
-        <label>Username<input id="newUserUsername" required></label>
-        <label>Password<input id="newUserPassword" type="password" minlength="6" required></label>
+        <label>Username<input id="newUserUsername" required placeholder="e.g. juan.dela.cruz"></label>
+        <label>Password<input id="newUserPassword" type="password" minlength="6" required placeholder="Min 6 characters"></label>
       </div>
       <div class="fieldRow">
         <label>Role
@@ -192,7 +194,7 @@
   </div>
 </div>
 
-<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="js/config.js"></script>
 <script src="js/supabase-store.js"></script>
