@@ -44,14 +44,17 @@ const DB = {
 
   /* Live updates: fires `onChange` whenever events/readings change in the
    * database, from ANY device. This is what makes the dashboard genuinely
-   * real-time instead of only polling every N seconds. */
-  subscribeLive(onChange){
+   * real-time instead of only polling every N seconds. `onStatus` (optional)
+   * reports the socket's real state (SUBSCRIBED / CHANNEL_ERROR / TIMED_OUT /
+   * CLOSED) so the UI's "Live" indicator reflects reality instead of just
+   * being decorative. */
+  subscribeLive(onChange, onStatus){
     if(this.channel) this.client.removeChannel(this.channel);
     this.channel = this.client
       .channel("feedmix-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "events" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "readings" }, onChange)
-      .subscribe();
+      .subscribe(status => { if(onStatus) onStatus(status); });
     return this.channel;
   },
 

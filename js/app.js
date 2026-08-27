@@ -38,6 +38,27 @@ function tickLiveTimers(){
 }
 setInterval(tickLiveTimers, 1000);
 
+/* Reflects the actual Supabase realtime socket state in the header,
+ * rather than a purely decorative dot — so people can trust it. */
+function updateLiveIndicator(status){
+  const el = document.getElementById("liveIndicator");
+  const text = document.getElementById("liveText");
+  if(!el || !text) return;
+  el.classList.remove("offline", "connecting");
+  if(status === "SUBSCRIBED"){
+    text.textContent = "Live";
+    el.title = "Connected — updates from any device appear instantly.";
+  }else if(status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED"){
+    el.classList.add("offline");
+    text.textContent = "Offline";
+    el.title = "Realtime connection lost — falling back to a 45s refresh. Check your internet connection.";
+  }else{
+    el.classList.add("connecting");
+    text.textContent = "Connecting…";
+    el.title = "Connecting to the live database feed…";
+  }
+}
+
 function toast(msg, type = "info"){
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -80,7 +101,9 @@ function showView(name){
 }
 
 document.getElementById("mobileNavToggle").addEventListener("click", () => {
-  document.getElementById("mainNav").classList.toggle("navOpen");
+  const nav = document.getElementById("mainNav");
+  nav.classList.toggle("navOpen");
+  document.getElementById("mobileNavToggle").setAttribute("aria-expanded", nav.classList.contains("navOpen"));
 });
 
 /* ---------------- Boot / Login ---------------- */
@@ -148,7 +171,7 @@ async function afterLogin(){
     await STORE.refreshLive();
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
     if(!document.getElementById("view-entry").classList.contains("hidden")) renderEntryDetail();
-  });
+  }, updateLiveIndicator);
 
   // Slow fallback poll in case the realtime socket ever drops.
   clearInterval(pollTimer);
@@ -202,15 +225,17 @@ function renderDashboard(){
 
   shown.forEach(plant => {
     const machines = STORE.machinesForPlant(plant.id);
-    let plantKWh = 0;
+    let plantKWh = 0, runningCount = 0;
     const rowsHtml = machines.map(m => {
-      const { kw, baseKwh, openStart, kwh } = STORE.liveEnergyState(plant.id, m.id, today, m.ratedKW);
+      const { kw, baseKwh, openStart, kwh, measured } = STORE.liveEnergyState(plant.id, m.id, today, m.ratedKW);
       const running = !!openStart;
+      if(running) runningCount++;
       plantKWh += kwh;
       const startAttr = running ? ` data-start="${openStart.toISOString()}" data-base-kwh="${baseKwh}" data-kw="${kw}"` : "";
+      const sourceTag = `<span class="sourceTag ${measured ? "measured" : "rated"}" title="${measured ? "Uses a logged actual power reading for today" : "No reading logged today — estimated from this machine's rated kW"}">${measured ? "MEASURED" : "RATED"}</span>`;
       return `<div class="machineRow">
         <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
-        <span class="machineStat">${running ? "RUNNING" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
+        <span class="machineStat">${running ? "RUNNING" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
       </div>`;
     }).join("") || "<p class='hint'>No machines configured for this plant yet.</p>";
 
@@ -218,6 +243,7 @@ function renderDashboard(){
     card.className = "card plantCard";
     card.innerHTML = `
       <h3>${plant.name} <span class="meterChip">${plantKWh.toFixed(1)} kWh</span></h3>
+      ${machines.length ? `<p class="runningCount">${runningCount} of ${machines.length} machine${machines.length === 1 ? "" : "s"} running now</p>` : ""}
       ${rowsHtml}
     `;
     grid.appendChild(card);
@@ -291,10 +317,19 @@ document.getElementById("shiftForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const date = document.getElementById("shiftDate").value;
   const hours = Number(document.getElementById("shiftHours").value);
-  if(!date || !(hours >= 0)){ toast("Please fill in date and hours.", "error"); return; }
+  const machineId = document.getElementById("shiftMachine").value;
+  if(!date || !(hours > 0)){ toast("Please fill in date and a positive number of hours.", "error"); return; }
+  // Sanity check: a machine physically can't run more than 24h in one day.
+  // Warn (rather than silently accept) if this entry would push the day's
+  // logged shift total for this machine past that.
+  const alreadyLogged = STORE.hoursFromShifts(currentEntryPlant, machineId, date);
+  if(alreadyLogged + hours > 24){
+    toast(`That's ${(alreadyLogged + hours).toFixed(1)} hours logged for this machine on ${date} — more than a full day. Check the date/hours before saving.`, "error");
+    return;
+  }
   const record = {
     id: STORE.uid("sh"), plant_id: currentEntryPlant,
-    machine_id: document.getElementById("shiftMachine").value,
+    machine_id: machineId,
     date, shift_name: document.getElementById("shiftName").value,
     hours, by_username: AUTH.session.username
   };
@@ -303,6 +338,7 @@ document.getElementById("shiftForm").addEventListener("submit", async (e) => {
     STORE.shifts.push(STORE._mapShift(record));
     document.getElementById("shiftHours").value = "";
     showEntryMsg("Shift hours saved.");
+    if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
 });
 
@@ -310,10 +346,22 @@ document.getElementById("readingForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const date = document.getElementById("readingDate").value;
   const kw = Number(document.getElementById("readingKW").value);
+  const machineId = document.getElementById("readingMachine").value;
   if(!date || !(kw >= 0)){ toast("Please fill in date and power reading.", "error"); return; }
+  // Sanity check: catch likely typos (e.g. extra digit) by comparing
+  // against the machine's rated kW, without blocking a genuine reading.
+  const machine = STORE.machineById(machineId);
+  if(machine && machine.ratedKW > 0 && kw > machine.ratedKW * 3){
+    const ok = await confirmDialog(
+      "Unusually high reading",
+      `${kw} kW is more than 3× ${machine.name}'s rated ${machine.ratedKW} kW. Save it anyway?`,
+      "Save anyway"
+    );
+    if(!ok) return;
+  }
   const record = {
     id: STORE.uid("rd"), plant_id: currentEntryPlant,
-    machine_id: document.getElementById("readingMachine").value,
+    machine_id: machineId,
     date, ts: new Date().toISOString(), kw, by_username: AUTH.session.username
   };
   try{
@@ -321,6 +369,7 @@ document.getElementById("readingForm").addEventListener("submit", async (e) => {
     STORE.readings.push({ id: record.id, plant: record.plant_id, machine: record.machine_id, date: record.date, timestamp: record.ts, kW: record.kw, by: record.by_username });
     document.getElementById("readingKW").value = "";
     showEntryMsg("Power reading saved.");
+    if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
 });
 
@@ -391,6 +440,9 @@ document.getElementById("addPlantForm").addEventListener("submit", async (e) => 
   const nameInput = document.getElementById("newPlantName");
   const name = nameInput.value.trim();
   if(!name){ toast("Enter a plant name.", "error"); return; }
+  if(STORE.config.plants.some(p => p.name.toLowerCase() === name.toLowerCase())){
+    toast("A plant with that name already exists.", "error"); return;
+  }
   const id = STORE.uid(STORE.slugify(name));
   try{
     await DB.insert("plants", { id, name });
@@ -443,11 +495,17 @@ document.getElementById("addMachineForm").addEventListener("submit", async (e) =
   if(!plantId){ toast("Add a plant first.", "error"); return; }
   const existing = STORE.machinesForPlant(plantId);
   if(existing.length >= 10){ toast("This plant already has 10 machines (maximum).", "error"); return; }
+  const name = document.getElementById("newMachineName").value.trim();
+  const ratedKW = Number(document.getElementById("newMachineKW").value);
+  if(existing.some(m => m.name.toLowerCase() === name.toLowerCase())){
+    toast("This plant already has a machine with that name.", "error"); return;
+  }
+  if(!(ratedKW > 0)){ toast("Rated power (kW) must be greater than 0.", "error"); return; }
   const machine = {
     id: STORE.uid("m"), plantId,
-    name: document.getElementById("newMachineName").value.trim(),
+    name,
     category: document.getElementById("newMachineCategory").value.trim(),
-    ratedKW: Number(document.getElementById("newMachineKW").value)
+    ratedKW
   };
   try{
     await DB.insert("machines", { id: machine.id, plant_id: machine.plantId, name: machine.name, category: machine.category, rated_kw: machine.ratedKW });
@@ -462,7 +520,11 @@ document.getElementById("addMachineForm").addEventListener("submit", async (e) =
 function renderAdminUsers(){
   const usersEl = document.getElementById("adminUsersList");
   const newUserPlant = document.getElementById("newUserPlant");
+  const newUserRole = document.getElementById("newUserRole");
   newUserPlant.innerHTML = STORE.config.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+  const syncPlantFieldState = () => { newUserPlant.disabled = newUserRole.value === "admin"; };
+  newUserRole.onchange = syncPlantFieldState;
+  syncPlantFieldState();
 
   usersEl.innerHTML = "<table><tr><th>Name</th><th>Username</th><th>Role</th><th>Plant</th><th>Status</th><th>Actions</th></tr>" +
     STORE.users.map(u => {
@@ -516,6 +578,12 @@ document.getElementById("addUserForm").addEventListener("submit", async (e) => {
   const plantId = role === "technician" ? document.getElementById("newUserPlant").value : null;
   if(STORE.users.find(u => u.username.toLowerCase() === username.toLowerCase())){
     toast("Username already exists.", "error"); return;
+  }
+  if(password.length < 6){
+    toast("Password must be at least 6 characters.", "error"); return;
+  }
+  if(role === "technician" && !plantId){
+    toast("Choose a plant for this technician.", "error"); return;
   }
   try{
     await DB.rpc("admin_add_user", { p_name: name, p_username: username, p_role: role, p_plant_id: plantId, p_password: password });
