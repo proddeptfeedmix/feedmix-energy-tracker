@@ -452,6 +452,10 @@ function editedTag(row){
 function logsInRange(dateStr){
   return dateStr >= logsFilter.from && dateStr <= logsFilter.to;
 }
+// Plants a given log row should match against the current filter.
+function logsMatchesPlant(rowPlantId){
+  return logsFilter.plant === "ALL" || rowPlantId === logsFilter.plant;
+}
 
 function renderLogs(){
   const plants = visiblePlants();
@@ -459,11 +463,28 @@ function renderLogs(){
     document.getElementById("logsTableWrap").innerHTML = `<div class="emptyState"><p>No plant assigned yet.</p><p class="hint">Ask an admin to assign you to a plant.</p></div>`;
     return;
   }
-  const plantSel = document.getElementById("logsPlantSelect");
-  fillPlantSelect(plantSel, plants);
-  if(!logsFilter.plant || !plants.find(p => p.id === logsFilter.plant)) logsFilter.plant = plants[0].id;
-  plantSel.value = logsFilter.plant;
-  plantSel.onchange = () => { logsFilter.plant = plantSel.value; logsFilter.machine = "ALL"; logsEditing = null; renderLogsDetail(); };
+
+  // Plant filter: pill buttons (matches the Dashboard's "All Plants" pattern)
+  // instead of a <select>, so admins can see every plant's logs at once.
+  const bar = document.getElementById("logsPlantBar");
+  if(!logsFilter.plant || (logsFilter.plant !== "ALL" && !plants.find(p => p.id === logsFilter.plant))){
+    logsFilter.plant = plants.length > 1 ? "ALL" : plants[0].id;
+  }
+  bar.innerHTML = "";
+  if(plants.length > 1){
+    const allBtn = document.createElement("button");
+    allBtn.textContent = "All Plants";
+    allBtn.className = logsFilter.plant === "ALL" ? "active" : "";
+    allBtn.onclick = () => { logsFilter.plant = "ALL"; logsFilter.machine = "ALL"; logsEditing = null; renderLogsDetail(); };
+    bar.appendChild(allBtn);
+  }
+  plants.forEach(p => {
+    const b = document.createElement("button");
+    b.textContent = p.name;
+    b.className = logsFilter.plant === p.id ? "active" : "";
+    b.onclick = () => { logsFilter.plant = p.id; logsFilter.machine = "ALL"; logsEditing = null; renderLogsDetail(); };
+    bar.appendChild(b);
+  });
 
   if(!logsFilter.from || !logsFilter.to){
     const from = new Date();
@@ -486,10 +507,25 @@ function renderLogs(){
 }
 
 function renderLogsDetail(){
-  const machines = STORE.machinesForPlant(logsFilter.plant);
+  // Machine filter stays a dropdown; when viewing all plants it lists
+  // every machine across those plants (grouped by plant name).
   const machineSel = document.getElementById("logsMachineSelect");
-  machineSel.innerHTML = `<option value="ALL">All Machines</option>` + machines.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
-  if(!machines.find(m => m.id === logsFilter.machine)) logsFilter.machine = "ALL";
+  const plants = logsFilter.plant === "ALL" ? visiblePlants() : [STORE.plantById(logsFilter.plant)].filter(Boolean);
+  let allMachines = [];
+  let options = `<option value="ALL">All Machines</option>`;
+  if(logsFilter.plant === "ALL"){
+    options += plants.map(p => {
+      const machines = STORE.machinesForPlant(p.id);
+      allMachines = allMachines.concat(machines);
+      if(!machines.length) return "";
+      return `<optgroup label="${p.name}">${machines.map(m => `<option value="${m.id}">${m.name}</option>`).join("")}</optgroup>`;
+    }).join("");
+  } else {
+    allMachines = STORE.machinesForPlant(logsFilter.plant);
+    options += allMachines.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+  }
+  machineSel.innerHTML = options;
+  if(!allMachines.find(m => m.id === logsFilter.machine)) logsFilter.machine = "ALL";
   machineSel.value = logsFilter.machine;
   machineSel.onchange = () => { logsFilter.machine = machineSel.value; logsEditing = null; renderLogsTable(); };
 
@@ -501,17 +537,22 @@ function renderLogsTable(){
   const wrap = document.getElementById("logsTableWrap");
   const matchesMachine = id => logsFilter.machine === "ALL" || id === logsFilter.machine;
 
+  const showPlantCol = logsFilter.plant === "ALL";
+  const plantCell = r => showPlantCol ? `<td>${(STORE.plantById(r.plant) || {}).name || r.plant}</td>` : "";
+  const plantHeader = showPlantCol ? "<th>Plant</th>" : "";
+
   if(logsTab === "events"){
     const rows = STORE.events
-      .filter(e => e.plant === logsFilter.plant && matchesMachine(e.machine) && logsInRange(e.timestamp.slice(0, 10)))
+      .filter(e => logsMatchesPlant(e.plant) && matchesMachine(e.machine) && logsInRange(e.timestamp.slice(0, 10)))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    wrap.innerHTML = rows.length ? `<table><tr><th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
+    wrap.innerHTML = rows.length ? `<table><tr>${plantHeader}<th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
       rows.map(r => {
         const machine = STORE.machineById(r.machine);
         if(logsEditing && logsEditing.type === "events" && logsEditing.id === r.id){
           const dt = new Date(r.timestamp);
           const localVal = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
           return `<tr>
+            ${plantCell(r)}
             <td><input type="datetime-local" class="tdInput" id="editEventTs" value="${localVal}"></td>
             <td>${machine ? machine.name : r.machine}</td>
             <td>${r.type === "start" ? "Start" : "Stop"}</td>
@@ -523,6 +564,7 @@ function renderLogsTable(){
           </tr>`;
         }
         return `<tr>
+          ${plantCell(r)}
           <td>${new Date(r.timestamp).toLocaleString()}${editedTag(r)}</td>
           <td>${machine ? machine.name : r.machine}</td>
           <td>${r.type === "start" ? "Start" : "Stop"}</td>
@@ -561,13 +603,14 @@ function renderLogsTable(){
 
   if(logsTab === "shifts"){
     const rows = STORE.shifts
-      .filter(s => s.plant === logsFilter.plant && matchesMachine(s.machine) && logsInRange(s.date))
+      .filter(s => logsMatchesPlant(s.plant) && matchesMachine(s.machine) && logsInRange(s.date))
       .sort((a, b) => b.date.localeCompare(a.date));
-    wrap.innerHTML = rows.length ? `<table><tr><th>Date</th><th>Machine</th><th>Shift</th><th>Hours</th><th>By</th><th>Actions</th></tr>` +
+    wrap.innerHTML = rows.length ? `<table><tr>${plantHeader}<th>Date</th><th>Machine</th><th>Shift</th><th>Hours</th><th>By</th><th>Actions</th></tr>` +
       rows.map(r => {
         const machine = STORE.machineById(r.machine);
         if(logsEditing && logsEditing.type === "shifts" && logsEditing.id === r.id){
           return `<tr>
+            ${plantCell(r)}
             <td><input type="date" class="tdInput" id="editShiftDate" value="${r.date}"></td>
             <td>${machine ? machine.name : r.machine}</td>
             <td><select class="tdInput" id="editShiftName">${["Shift 1", "Shift 2", "Shift 3"].map(s => `<option ${s === r.shift ? "selected" : ""}>${s}</option>`).join("")}</select></td>
@@ -580,6 +623,7 @@ function renderLogsTable(){
           </tr>`;
         }
         return `<tr>
+          ${plantCell(r)}
           <td>${r.date}${editedTag(r)}</td>
           <td>${machine ? machine.name : r.machine}</td>
           <td>${r.shift || "-"}</td>
@@ -621,15 +665,16 @@ function renderLogsTable(){
 
   if(logsTab === "readings"){
     const rows = STORE.readings
-      .filter(r => r.plant === logsFilter.plant && matchesMachine(r.machine) && logsInRange(r.date))
+      .filter(r => logsMatchesPlant(r.plant) && matchesMachine(r.machine) && logsInRange(r.date))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    wrap.innerHTML = rows.length ? `<table><tr><th>Date</th><th>Machine</th><th>Time</th><th>kW</th><th>By</th><th>Actions</th></tr>` +
+    wrap.innerHTML = rows.length ? `<table><tr>${plantHeader}<th>Date</th><th>Machine</th><th>Time</th><th>kW</th><th>By</th><th>Actions</th></tr>` +
       rows.map(r => {
         const machine = STORE.machineById(r.machine);
         if(logsEditing && logsEditing.type === "readings" && logsEditing.id === r.id){
           const dt = new Date(r.timestamp);
           const localVal = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
           return `<tr>
+            ${plantCell(r)}
             <td><input type="date" class="tdInput" id="editReadingDate" value="${r.date}"></td>
             <td>${machine ? machine.name : r.machine}</td>
             <td><input type="datetime-local" class="tdInput" id="editReadingTs" value="${localVal}"></td>
@@ -642,6 +687,7 @@ function renderLogsTable(){
           </tr>`;
         }
         return `<tr>
+          ${plantCell(r)}
           <td>${r.date}${editedTag(r)}</td>
           <td>${machine ? machine.name : r.machine}</td>
           <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
