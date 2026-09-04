@@ -351,6 +351,9 @@ function renderEntryDetail(){
   document.getElementById("readingMachine").innerHTML = opts;
   document.getElementById("shiftDate").value = STORE.todayStr();
   document.getElementById("readingDate").value = STORE.todayStr();
+
+  const shiftNameSel = document.getElementById("shiftName");
+  shiftNameSel.onchange = () => { document.getElementById("shiftHours").value = "12"; };
 }
 
 async function logEvent(machineId, type){
@@ -389,7 +392,7 @@ document.getElementById("shiftForm").addEventListener("submit", async (e) => {
   try{
     await DB.insert("shifts", record);
     STORE.shifts.push(STORE._mapShift(record));
-    document.getElementById("shiftHours").value = "";
+    document.getElementById("shiftHours").value = "12";
     showEntryMsg("Shift hours saved successfully.");
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
@@ -542,10 +545,29 @@ function renderLogsTable(){
   const plantHeader = showPlantCol ? "<th>Plant</th>" : "";
 
   if(logsTab === "events"){
+    // Total run hours per machine over the selected date range, derived
+    // purely from paired Start/Stop events (STORE.rangeHours) — not from
+    // shift-hours or reading entries.
+    const summaryMachines = [];
+    (logsFilter.plant === "ALL" ? visiblePlants() : [STORE.plantById(logsFilter.plant)].filter(Boolean)).forEach(p => {
+      STORE.machinesForPlant(p.id).filter(m => matchesMachine(m.id)).forEach(m => {
+        summaryMachines.push({
+          plantName: p.name, machineName: m.name,
+          hours: STORE.rangeHours(p.id, m.id, logsFilter.from, logsFilter.to)
+        });
+      });
+    });
+    const summaryHtml = summaryMachines.length ? `<div class="runHoursSummary">${
+      summaryMachines.map(s => `<div class="runHoursChip">
+        <span class="runHoursMachine">${showPlantCol ? `${s.plantName} · ` : ""}${s.machineName}</span>
+        <span class="runHoursValue">${s.hours.toFixed(1)} hrs</span>
+      </div>`).join("")
+    }</div>` : "";
+
     const rows = STORE.events
       .filter(e => logsMatchesPlant(e.plant) && matchesMachine(e.machine) && logsInRange(e.timestamp.slice(0, 10)))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    wrap.innerHTML = rows.length ? `<table><tr>${plantHeader}<th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
+    wrap.innerHTML = summaryHtml + (rows.length ? `<table><tr>${plantHeader}<th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
       rows.map(r => {
         const machine = STORE.machineById(r.machine);
         if(logsEditing && logsEditing.type === "events" && logsEditing.id === r.id){
@@ -571,8 +593,7 @@ function renderLogsTable(){
           <td>${r.by || "-"}</td>
           <td class="tableActions">${canEditLogRow(r) ? `<button class="btnSmall" data-edit-event="${r.id}">Edit</button><button class="btnIconDanger" data-del-event="${r.id}">Delete</button>` : ""}</td>
         </tr>`;
-      }).join("") + "</table>" : `<div class="emptyState"><p class="hint">No run events in this range.</p></div>`;
-
+      }).join("") + "</table>" : `<div class="emptyState"><p class="hint">No run events in this range.</p></div>`);
     wrap.querySelectorAll("[data-edit-event]").forEach(b => b.onclick = () => { logsEditing = { type: "events", id: b.dataset.editEvent }; renderLogsTable(); });
     wrap.querySelectorAll("[data-cancel-log]").forEach(b => b.onclick = () => { logsEditing = null; renderLogsTable(); });
     wrap.querySelectorAll("[data-save-event]").forEach(b => b.onclick = async () => {
@@ -613,7 +634,7 @@ function renderLogsTable(){
             ${plantCell(r)}
             <td><input type="date" class="tdInput" id="editShiftDate" value="${r.date}"></td>
             <td>${machine ? machine.name : r.machine}</td>
-            <td><select class="tdInput" id="editShiftName">${["Shift 1", "Shift 2", "Shift 3"].map(s => `<option ${s === r.shift ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+            <td><select class="tdInput" id="editShiftName">${["Morning Shift", "Night Shift"].map(s => `<option ${s === r.shift ? "selected" : ""}>${s}</option>`).join("")}</select></td>
             <td><input type="number" step="0.1" min="0" max="24" class="tdInput" id="editShiftHours" value="${r.hours}"></td>
             <td>${r.by || "-"}</td>
             <td class="tableActions">
