@@ -31,6 +31,7 @@
   <nav id="mainNav">
     <button data-view="dashboard" class="navBtn active">Dashboard</button>
     <button data-view="entry" class="navBtn">Data Entry</button>
+    <button data-view="logs" class="navBtn">Logs</button>
     <button data-view="reports" class="navBtn">Reports</button>
     <button data-view="admin" class="navBtn adminOnly hidden">Admin</button>
   </nav>
@@ -110,6 +111,32 @@
     </form>
   </div>
   <p id="entryMsg" class="success hidden"></p>
+</main>
+
+<!-- LOGS -->
+<main id="view-logs" class="view hidden">
+  <div class="viewHead">
+    <h2>Logs</h2>
+    <p class="hint">Full history of run events, shift hours, and power readings. Admins can edit or delete any row; technicians can fix their own entries.</p>
+  </div>
+  <div class="card">
+    <div class="fieldRow">
+      <label>Plant<select id="logsPlantSelect"></select></label>
+      <label>Machine<select id="logsMachineSelect"><option value="ALL">All Machines</option></select></label>
+    </div>
+    <div class="fieldRow">
+      <label>From<input id="logsFrom" type="date"></label>
+      <label>To<input id="logsTo" type="date"></label>
+    </div>
+  </div>
+  <div id="logsTabBar" class="filterbar">
+    <button data-logtab="events" class="active">Run Events</button>
+    <button data-logtab="shifts">Shift Hours</button>
+    <button data-logtab="readings">Power Readings</button>
+  </div>
+  <div class="card">
+    <div id="logsTableWrap" class="tableScroll"></div>
+  </div>
 </main>
 
 <!-- REPORTS -->

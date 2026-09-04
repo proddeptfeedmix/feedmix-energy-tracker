@@ -224,11 +224,12 @@ button.primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:
   text-shadow:0 0 8px var(--amber-glow);white-space:nowrap;
 }
 .machineRow{
-  display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--line-subtle);
+  padding:12px 0;border-top:1px solid var(--line-subtle);
   font-size:.88rem;transition:background var(--transition-fast);
 }
 .machineRow:first-of-type{border-top:none;}
 .machineRow:hover{background:var(--surface-2);margin:0 -12px;padding-left:12px;padding-right:12px;border-radius:var(--radius-sm);}
+.machineRowTop{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
 .machineName{display:flex;align-items:center;font-weight:600;}
 .lamp{
   width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:10px;background:#C3CDD1;flex-shrink:0;
@@ -329,8 +330,17 @@ button.danger:active{transform:translateY(1px);box-shadow:0 1px 0 #8f2a1f;}
 }
 .btnSmall:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-soft);}
 .btnSmall:disabled{opacity:.35;cursor:not-allowed;border-color:var(--line);color:var(--muted);background:#fff;}
-.tableActions{display:flex;flex-wrap:wrap;gap:0;white-space:nowrap;}
+.tableActions{display:flex;flex-wrap:wrap;gap:6px;white-space:nowrap;}
 .muted{color:var(--muted);}
+
+/* ---------- dashboard: hours rollup ---------- */
+.hoursBreakdown{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;}
+.hoursBreakdown b{color:var(--ink);font-weight:600;}
+
+/* ---------- logs ---------- */
+.tableScroll{overflow-x:auto;}
+.editedBadge{font-family:var(--font-mono);font-size:.66rem;color:var(--muted);font-weight:400;margin-top:2px;}
+.tdInput{width:auto;min-width:110px;padding:6px 8px;margin:0;font-size:.82rem;}
 
 /* ---------- toast ---------- */
 .toast{
@@ -358,7 +368,7 @@ button.danger:active{transform:translateY(1px);box-shadow:0 1px 0 #8f2a1f;}
   .view{padding:14px;}
   .grid{grid-template-columns:1fr;}
   .card{padding:18px;}
-  .machineRow{flex-direction:column;align-items:flex-start;gap:6px;}
+  .machineRowTop{flex-direction:column;align-items:flex-start;gap:6px;}
   .machineStat{width:100%;justify-content:space-between;}
   .runLogRow{flex-direction:column;align-items:flex-start;}
   .btnRow{width:100%;}

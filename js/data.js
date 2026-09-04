@@ -37,12 +37,44 @@ const STORE = {
   },
 
   _mapLive(events, readings){
-    this.events = events.map(e => ({ id: e.id, plant: e.plant_id, machine: e.machine_id, type: e.type, timestamp: e.ts, by: e.by_username }));
-    this.readings = readings.map(r => ({ id: r.id, plant: r.plant_id, machine: r.machine_id, date: r.date, timestamp: r.ts, kW: Number(r.kw), by: r.by_username }));
+    this.events = events.map(e => ({ id: e.id, plant: e.plant_id, machine: e.machine_id, type: e.type, timestamp: e.ts, by: e.by_username, editedAt: e.edited_at || null, editedBy: e.edited_by || null }));
+    this.readings = readings.map(r => ({ id: r.id, plant: r.plant_id, machine: r.machine_id, date: r.date, timestamp: r.ts, kW: Number(r.kw), by: r.by_username, editedAt: r.edited_at || null, editedBy: r.edited_by || null }));
   },
 
   _mapShift(s){
-    return { id: s.id, plant: s.plant_id, machine: s.machine_id, date: s.date, shift: s.shift_name, hours: Number(s.hours), by: s.by_username };
+    return { id: s.id, plant: s.plant_id, machine: s.machine_id, date: s.date, shift: s.shift_name, hours: Number(s.hours), by: s.by_username, editedAt: s.edited_at || null, editedBy: s.edited_by || null };
+  },
+
+  /* ---- Edits & deletes for the Logs view (audit-trailed corrections) ---- */
+  async updateEvent(id, { timestamp }, editedBy){
+    const patch = { ts: timestamp, edited_at: new Date().toISOString(), edited_by: editedBy };
+    await DB.update("events", { id }, patch);
+    const row = this.events.find(e => e.id === id);
+    if(row){ row.timestamp = timestamp; row.editedAt = patch.edited_at; row.editedBy = editedBy; }
+  },
+  async deleteEvent(id){
+    await DB.remove("events", { id });
+    this.events = this.events.filter(e => e.id !== id);
+  },
+  async updateShift(id, { date, shift, hours }, editedBy){
+    const patch = { date, shift_name: shift, hours, edited_at: new Date().toISOString(), edited_by: editedBy };
+    await DB.update("shifts", { id }, patch);
+    const row = this.shifts.find(s => s.id === id);
+    if(row){ row.date = date; row.shift = shift; row.hours = hours; row.editedAt = patch.edited_at; row.editedBy = editedBy; }
+  },
+  async deleteShift(id){
+    await DB.remove("shifts", { id });
+    this.shifts = this.shifts.filter(s => s.id !== id);
+  },
+  async updateReading(id, { date, timestamp, kW }, editedBy){
+    const patch = { date, ts: timestamp, kw: kW, edited_at: new Date().toISOString(), edited_by: editedBy };
+    await DB.update("readings", { id }, patch);
+    const row = this.readings.find(r => r.id === id);
+    if(row){ row.date = date; row.timestamp = timestamp; row.kW = kW; row.editedAt = patch.edited_at; row.editedBy = editedBy; }
+  },
+  async deleteReading(id){
+    await DB.remove("readings", { id });
+    this.readings = this.readings.filter(r => r.id !== id);
   },
 
   async reloadUsers(){
@@ -62,6 +94,27 @@ const STORE = {
 
   todayStr(){
     return new Date().toISOString().slice(0, 10);
+  },
+
+  /* Monday of the current week, and the 1st of the current month, as
+   * date strings — used for the dashboard's Today/Week/Month rollups. */
+  weekStartStr(){
+    const d = new Date();
+    const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
+    d.setDate(d.getDate() - dayIdx);
+    return d.toISOString().slice(0, 10);
+  },
+  monthStartStr(){
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  },
+
+  /* Total operating hours for one machine across an inclusive date range
+   * (used for the dashboard's Week/Month rollups and could back a custom
+   * report range too). */
+  rangeHours(plantId, machineId, fromStr, toStr){
+    return this.dateRange(fromStr, toStr).reduce((sum, d) => sum + this.operatingHours(plantId, machineId, d), 0);
   },
 
   /* Merge this machine's Start/Stop events into continuous run intervals,

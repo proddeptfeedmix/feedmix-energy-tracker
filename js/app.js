@@ -127,6 +127,7 @@ function showView(name){
   setTimeout(() => {
     if(name === "dashboard") renderDashboard();
     if(name === "entry") renderEntry();
+    if(name === "logs") renderLogs();
     if(name === "reports") renderReports();
     if(name === "admin") renderAdmin();
   }, name === "dashboard" && currentView ? 130 : 0);
@@ -213,6 +214,7 @@ async function afterLogin(){
     await STORE.refreshLive();
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
     if(!document.getElementById("view-entry").classList.contains("hidden")) renderEntryDetail();
+    if(!document.getElementById("view-logs").classList.contains("hidden")) renderLogsTable();
   }, updateLiveIndicator);
 
   // Slow fallback poll in case the realtime socket ever drops.
@@ -220,6 +222,7 @@ async function afterLogin(){
   pollTimer = setInterval(async () => {
     await STORE.refreshLive();
     if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+    if(!document.getElementById("view-logs").classList.contains("hidden")) renderLogsTable();
   }, 45000);
 }
 
@@ -259,6 +262,8 @@ function renderDashboard(){
 
   const shown = dashboardFilter === "ALL" ? plants : plants.filter(p => p.id === dashboardFilter);
   const today = STORE.todayStr();
+  const weekStart = STORE.weekStartStr();
+  const monthStart = STORE.monthStartStr();
   grid.innerHTML = "";
 
   if(!shown.length){
@@ -275,9 +280,15 @@ function renderDashboard(){
       plantKWh += kwh;
       const startAttr = running ? ` data-start="${openStart.toISOString()}" data-base-kwh="${baseKwh}" data-kw="${kw}"` : "";
       const sourceTag = `<span class="sourceTag ${measured ? "measured" : "rated"}" title="${measured ? "Uses a logged actual power reading for today" : "No reading logged today — estimated from this machine's rated kW"}">${measured ? "MEASURED" : "RATED"}</span>`;
+      const todayHours = STORE.operatingHours(plant.id, m.id, today);
+      const weekHours = STORE.rangeHours(plant.id, m.id, weekStart, today);
+      const monthHours = STORE.rangeHours(plant.id, m.id, monthStart, today);
       return `<div class="machineRow">
-        <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
-        <span class="machineStat">${running ? "<strong style='color:var(--teal)'>RUNNING</strong>" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
+        <div class="machineRowTop">
+          <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
+          <span class="machineStat">${running ? "<strong style='color:var(--teal)'>RUNNING</strong>" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
+        </div>
+        <div class="hoursBreakdown">Today <b>${todayHours.toFixed(1)}h</b> · This week <b>${weekHours.toFixed(1)}h</b> · This month <b>${monthHours.toFixed(1)}h</b></div>
       </div>`;
     }).join("") || `<div class="emptyState" style="padding:20px"><p class="hint">No machines configured for this plant yet.</p></div>`;
 
@@ -420,6 +431,255 @@ function showEntryMsg(text){
   el.textContent = text;
   el.classList.remove("hidden");
   setTimeout(() => el.classList.add("hidden"), 3000);
+}
+
+/* ---------------- Logs ----------------
+ * History + corrections for run events, shift hours, and power readings.
+ * Edits/deletes are gated client-side (admin, or the technician who
+ * originally logged the row) — same open-anon-key trust model as the rest
+ * of the app; every edit is stamped with edited_at/edited_by so there's a
+ * visible trail. */
+let logsFilter = { plant: null, machine: "ALL", from: null, to: null };
+let logsTab = "events";
+let logsEditing = null; // { type: "events" | "shifts" | "readings", id }
+
+function canEditLogRow(row){
+  return AUTH.isAdmin() || (AUTH.session && row.by === AUTH.session.username);
+}
+function editedTag(row){
+  return row.editedAt ? `<div class="editedBadge">Edited by ${row.editedBy || "?"}</div>` : "";
+}
+function logsInRange(dateStr){
+  return dateStr >= logsFilter.from && dateStr <= logsFilter.to;
+}
+
+function renderLogs(){
+  const plants = visiblePlants();
+  if(!plants.length){
+    document.getElementById("logsTableWrap").innerHTML = `<div class="emptyState"><p>No plant assigned yet.</p><p class="hint">Ask an admin to assign you to a plant.</p></div>`;
+    return;
+  }
+  const plantSel = document.getElementById("logsPlantSelect");
+  fillPlantSelect(plantSel, plants);
+  if(!logsFilter.plant || !plants.find(p => p.id === logsFilter.plant)) logsFilter.plant = plants[0].id;
+  plantSel.value = logsFilter.plant;
+  plantSel.onchange = () => { logsFilter.plant = plantSel.value; logsFilter.machine = "ALL"; logsEditing = null; renderLogsDetail(); };
+
+  if(!logsFilter.from || !logsFilter.to){
+    const from = new Date();
+    from.setDate(from.getDate() - 6);
+    logsFilter.from = from.toISOString().slice(0, 10);
+    logsFilter.to = STORE.todayStr();
+  }
+  const fromEl = document.getElementById("logsFrom");
+  const toEl = document.getElementById("logsTo");
+  fromEl.value = logsFilter.from;
+  toEl.value = logsFilter.to;
+  fromEl.onchange = () => { if(fromEl.value){ logsFilter.from = fromEl.value; logsEditing = null; renderLogsTable(); } };
+  toEl.onchange = () => { if(toEl.value){ logsFilter.to = toEl.value; logsEditing = null; renderLogsTable(); } };
+
+  document.querySelectorAll("[data-logtab]").forEach(b => {
+    b.onclick = () => { logsTab = b.dataset.logtab; logsEditing = null; renderLogsDetail(); };
+  });
+
+  renderLogsDetail();
+}
+
+function renderLogsDetail(){
+  const machines = STORE.machinesForPlant(logsFilter.plant);
+  const machineSel = document.getElementById("logsMachineSelect");
+  machineSel.innerHTML = `<option value="ALL">All Machines</option>` + machines.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+  if(!machines.find(m => m.id === logsFilter.machine)) logsFilter.machine = "ALL";
+  machineSel.value = logsFilter.machine;
+  machineSel.onchange = () => { logsFilter.machine = machineSel.value; logsEditing = null; renderLogsTable(); };
+
+  document.querySelectorAll("[data-logtab]").forEach(b => b.classList.toggle("active", b.dataset.logtab === logsTab));
+  renderLogsTable();
+}
+
+function renderLogsTable(){
+  const wrap = document.getElementById("logsTableWrap");
+  const matchesMachine = id => logsFilter.machine === "ALL" || id === logsFilter.machine;
+
+  if(logsTab === "events"){
+    const rows = STORE.events
+      .filter(e => e.plant === logsFilter.plant && matchesMachine(e.machine) && logsInRange(e.timestamp.slice(0, 10)))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    wrap.innerHTML = rows.length ? `<table><tr><th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
+      rows.map(r => {
+        const machine = STORE.machineById(r.machine);
+        if(logsEditing && logsEditing.type === "events" && logsEditing.id === r.id){
+          const dt = new Date(r.timestamp);
+          const localVal = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+          return `<tr>
+            <td><input type="datetime-local" class="tdInput" id="editEventTs" value="${localVal}"></td>
+            <td>${machine ? machine.name : r.machine}</td>
+            <td>${r.type === "start" ? "Start" : "Stop"}</td>
+            <td>${r.by || "-"}</td>
+            <td class="tableActions">
+              <button class="btnSmall" data-save-event="${r.id}">Save</button>
+              <button class="btnSmall" data-cancel-log>Cancel</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          <td>${new Date(r.timestamp).toLocaleString()}${editedTag(r)}</td>
+          <td>${machine ? machine.name : r.machine}</td>
+          <td>${r.type === "start" ? "Start" : "Stop"}</td>
+          <td>${r.by || "-"}</td>
+          <td class="tableActions">${canEditLogRow(r) ? `<button class="btnSmall" data-edit-event="${r.id}">Edit</button><button class="btnIconDanger" data-del-event="${r.id}">Delete</button>` : ""}</td>
+        </tr>`;
+      }).join("") + "</table>" : `<div class="emptyState"><p class="hint">No run events in this range.</p></div>`;
+
+    wrap.querySelectorAll("[data-edit-event]").forEach(b => b.onclick = () => { logsEditing = { type: "events", id: b.dataset.editEvent }; renderLogsTable(); });
+    wrap.querySelectorAll("[data-cancel-log]").forEach(b => b.onclick = () => { logsEditing = null; renderLogsTable(); });
+    wrap.querySelectorAll("[data-save-event]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.saveEvent;
+      const val = document.getElementById("editEventTs").value;
+      if(!val){ toast("Choose a valid date/time.", "error"); return; }
+      try{
+        await STORE.updateEvent(id, { timestamp: new Date(val).toISOString() }, AUTH.session.username);
+        logsEditing = null;
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Event updated.", "success");
+      }catch(e){ toast("Failed to update: " + e.message, "error"); }
+    });
+    wrap.querySelectorAll("[data-del-event]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.delEvent;
+      const ok = await confirmDialog("Delete this event?", "This permanently removes this Start/Stop entry from the run log.");
+      if(!ok) return;
+      try{
+        await STORE.deleteEvent(id);
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Event deleted.", "success");
+      }catch(e){ toast("Failed to delete: " + e.message, "error"); }
+    });
+    return;
+  }
+
+  if(logsTab === "shifts"){
+    const rows = STORE.shifts
+      .filter(s => s.plant === logsFilter.plant && matchesMachine(s.machine) && logsInRange(s.date))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    wrap.innerHTML = rows.length ? `<table><tr><th>Date</th><th>Machine</th><th>Shift</th><th>Hours</th><th>By</th><th>Actions</th></tr>` +
+      rows.map(r => {
+        const machine = STORE.machineById(r.machine);
+        if(logsEditing && logsEditing.type === "shifts" && logsEditing.id === r.id){
+          return `<tr>
+            <td><input type="date" class="tdInput" id="editShiftDate" value="${r.date}"></td>
+            <td>${machine ? machine.name : r.machine}</td>
+            <td><select class="tdInput" id="editShiftName">${["Shift 1", "Shift 2", "Shift 3"].map(s => `<option ${s === r.shift ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+            <td><input type="number" step="0.1" min="0" max="24" class="tdInput" id="editShiftHours" value="${r.hours}"></td>
+            <td>${r.by || "-"}</td>
+            <td class="tableActions">
+              <button class="btnSmall" data-save-shift="${r.id}">Save</button>
+              <button class="btnSmall" data-cancel-log>Cancel</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          <td>${r.date}${editedTag(r)}</td>
+          <td>${machine ? machine.name : r.machine}</td>
+          <td>${r.shift || "-"}</td>
+          <td>${r.hours.toFixed(1)}</td>
+          <td>${r.by || "-"}</td>
+          <td class="tableActions">${canEditLogRow(r) ? `<button class="btnSmall" data-edit-shift="${r.id}">Edit</button><button class="btnIconDanger" data-del-shift="${r.id}">Delete</button>` : ""}</td>
+        </tr>`;
+      }).join("") + "</table>" : `<div class="emptyState"><p class="hint">No shift entries in this range.</p></div>`;
+
+    wrap.querySelectorAll("[data-edit-shift]").forEach(b => b.onclick = () => { logsEditing = { type: "shifts", id: b.dataset.editShift }; renderLogsTable(); });
+    wrap.querySelectorAll("[data-cancel-log]").forEach(b => b.onclick = () => { logsEditing = null; renderLogsTable(); });
+    wrap.querySelectorAll("[data-save-shift]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.saveShift;
+      const date = document.getElementById("editShiftDate").value;
+      const shift = document.getElementById("editShiftName").value;
+      const hours = Number(document.getElementById("editShiftHours").value);
+      if(!date || !(hours > 0) || hours > 24){ toast("Enter a valid date and hours between 0 and 24.", "error"); return; }
+      try{
+        await STORE.updateShift(id, { date, shift, hours }, AUTH.session.username);
+        logsEditing = null;
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Shift entry updated.", "success");
+      }catch(e){ toast("Failed to update: " + e.message, "error"); }
+    });
+    wrap.querySelectorAll("[data-del-shift]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.delShift;
+      const ok = await confirmDialog("Delete this shift entry?", "This permanently removes this shift-hours entry.");
+      if(!ok) return;
+      try{
+        await STORE.deleteShift(id);
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Shift entry deleted.", "success");
+      }catch(e){ toast("Failed to delete: " + e.message, "error"); }
+    });
+    return;
+  }
+
+  if(logsTab === "readings"){
+    const rows = STORE.readings
+      .filter(r => r.plant === logsFilter.plant && matchesMachine(r.machine) && logsInRange(r.date))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    wrap.innerHTML = rows.length ? `<table><tr><th>Date</th><th>Machine</th><th>Time</th><th>kW</th><th>By</th><th>Actions</th></tr>` +
+      rows.map(r => {
+        const machine = STORE.machineById(r.machine);
+        if(logsEditing && logsEditing.type === "readings" && logsEditing.id === r.id){
+          const dt = new Date(r.timestamp);
+          const localVal = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+          return `<tr>
+            <td><input type="date" class="tdInput" id="editReadingDate" value="${r.date}"></td>
+            <td>${machine ? machine.name : r.machine}</td>
+            <td><input type="datetime-local" class="tdInput" id="editReadingTs" value="${localVal}"></td>
+            <td><input type="number" step="0.01" min="0" class="tdInput" id="editReadingKW" value="${r.kW}"></td>
+            <td>${r.by || "-"}</td>
+            <td class="tableActions">
+              <button class="btnSmall" data-save-reading="${r.id}">Save</button>
+              <button class="btnSmall" data-cancel-log>Cancel</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          <td>${r.date}${editedTag(r)}</td>
+          <td>${machine ? machine.name : r.machine}</td>
+          <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
+          <td>${r.kW}</td>
+          <td>${r.by || "-"}</td>
+          <td class="tableActions">${canEditLogRow(r) ? `<button class="btnSmall" data-edit-reading="${r.id}">Edit</button><button class="btnIconDanger" data-del-reading="${r.id}">Delete</button>` : ""}</td>
+        </tr>`;
+      }).join("") + "</table>" : `<div class="emptyState"><p class="hint">No power readings in this range.</p></div>`;
+
+    wrap.querySelectorAll("[data-edit-reading]").forEach(b => b.onclick = () => { logsEditing = { type: "readings", id: b.dataset.editReading }; renderLogsTable(); });
+    wrap.querySelectorAll("[data-cancel-log]").forEach(b => b.onclick = () => { logsEditing = null; renderLogsTable(); });
+    wrap.querySelectorAll("[data-save-reading]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.saveReading;
+      const date = document.getElementById("editReadingDate").value;
+      const tsVal = document.getElementById("editReadingTs").value;
+      const kW = Number(document.getElementById("editReadingKW").value);
+      if(!date || !tsVal || !(kW >= 0)){ toast("Enter a valid date, time, and kW.", "error"); return; }
+      try{
+        await STORE.updateReading(id, { date, timestamp: new Date(tsVal).toISOString(), kW }, AUTH.session.username);
+        logsEditing = null;
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Reading updated.", "success");
+      }catch(e){ toast("Failed to update: " + e.message, "error"); }
+    });
+    wrap.querySelectorAll("[data-del-reading]").forEach(b => b.onclick = async () => {
+      const id = b.dataset.delReading;
+      const ok = await confirmDialog("Delete this reading?", "This permanently removes this power reading.");
+      if(!ok) return;
+      try{
+        await STORE.deleteReading(id);
+        renderLogsTable();
+        if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
+        toast("Reading deleted.", "success");
+      }catch(e){ toast("Failed to delete: " + e.message, "error"); }
+    });
+    return;
+  }
 }
 
 /* ---------------- Reports ---------------- */

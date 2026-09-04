@@ -20,10 +20,16 @@ inside the database itself, never in the browser.
 - Manual entry of actual measured power (kW) per machine per day.
 - Energy (kWh) = operating hours × power (uses the actual reading for that
   day if one was entered, otherwise falls back to rated kW).
-- **Real-time dashboard** — showing which machines are currently running
-  and each plant's energy total for today. Updates instantly when anyone,
+- **Real-time dashboard** — showing which machines are currently running,
+  each plant's energy total for today, and a Today / This Week / This
+  Month running-hours rollup per machine. Updates instantly when anyone,
   on any device, logs data (with a slower background refresh as a
   fallback), not just on a timer.
+- **Logs** — full, filterable history (by plant, machine, and date range)
+  of every Start/Stop event, shift-hours entry, and power reading. Admins
+  can edit or delete any row; technicians can fix their own entries (e.g.
+  a missed Stop tap). Every edit is stamped "Edited by <user>" so nothing
+  is silently rewritten.
 - On-demand PDF report (per plant, per machine, total hours & kWh) for any
   date range.
 - Login with two roles: **admin** (sees everything, manages plants,
@@ -70,15 +76,39 @@ each person their own account, then delete the default `tech1`–`tech4`
 accounts, and change the `admin` password by deleting it and creating a
 replacement admin account first (so you're never locked out).
 
+### Already deployed before Logs/rollups were added?
+
+Open **SQL Editor → New query** in your Supabase project and run just
+this snippet once (it's also included, idempotently, if you re-run the
+full `supabase/schema.sql`):
+
+```sql
+alter table events add column if not exists edited_at timestamptz;
+alter table events add column if not exists edited_by text;
+alter table shifts add column if not exists edited_at timestamptz;
+alter table shifts add column if not exists edited_by text;
+alter table readings add column if not exists edited_at timestamptz;
+alter table readings add column if not exists edited_by text;
+```
+
+Then pull the latest `index.html`, `style.css`, `js/app.js`, and
+`js/data.js` into your GitHub Pages repo — no other setup changes needed.
+
 ## 4. Day-to-day use
 
-- **Dashboard** — see which machines are running right now and today's
-  kWh per plant, updating live as data comes in.
+- **Dashboard** — see which machines are running right now, today's kWh
+  per plant, and a Today / This Week / This Month running-hours rollup
+  for each machine, updating live as data comes in.
 - **Data Entry** (technicians see only their plant; admin can pick any):
   - Tap **Start**/**Stop** on a machine for real-time run logging, or
   - Enter a **shift's total hours** directly if you didn't log start/stop.
   - Enter an **actual power reading (kW)** whenever you measure one; if
     none is entered for a day, the app uses the machine's rated kW.
+- **Logs** — browse the full history of run events, shift hours, and
+  power readings for a plant/machine/date range. Fix a mistake with
+  **Edit** (admins can edit any row; technicians only their own), or
+  **Delete** it outright — both require the standard confirm dialog for
+  deletes, and edits are stamped with who made the change.
 - **Reports** — pick a plant (or All Plants) and a date range, then
   **Generate PDF Report** to download a report with per-machine and
   per-plant totals for that period.

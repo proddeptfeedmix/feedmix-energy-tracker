@@ -75,6 +75,17 @@ create table if not exists readings (
   created_at timestamptz not null default now()
 );
 
+-- Audit trail columns for the Logs view: lets an admin, or the technician
+-- who originally logged an entry, correct a mistake (e.g. a missed Stop
+-- tap) while leaving a visible "edited by" trace instead of silently
+-- rewriting history.
+alter table events add column if not exists edited_at timestamptz;
+alter table events add column if not exists edited_by text;
+alter table shifts add column if not exists edited_at timestamptz;
+alter table shifts add column if not exists edited_by text;
+alter table readings add column if not exists edited_at timestamptz;
+alter table readings add column if not exists edited_by text;
+
 create index if not exists idx_machines_plant on machines(plant_id);
 create index if not exists idx_events_plant_machine on events(plant_id, machine_id);
 create index if not exists idx_shifts_plant_machine on shifts(plant_id, machine_id);
