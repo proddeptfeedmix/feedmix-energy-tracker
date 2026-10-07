@@ -25,12 +25,11 @@ function uptimeBlockHtml(stats, opts = {}){
   return `<div class="updBlock ${compact ? "compact" : ""} ${state}" data-upd
       data-up="${stats.upMs}" data-down="${stats.downMs}" data-asof="${stats.asOf}"
       data-live="${stats.live ? 1 : 0}" data-running="${stats.running ? 1 : 0}">
-    ${label ? `<span class="updLabel">${label}</span>` : ""}
+    <div class="updHead"><span class="updLabel">${label}</span><span class="updPct">${pct.toFixed(1)}%</span></div>
     <div class="updBar" title="Green = uptime, red = downtime"><span class="updFill" style="width:${pct.toFixed(2)}%"></span></div>
     <div class="updRow">
       <span class="updUp"><i>UP</i><b class="updUpVal">${formatElapsed(stats.upMs)}</b></span>
       <span class="updDown"><i>DOWN</i><b class="updDownVal">${formatElapsed(stats.downMs)}</b></span>
-      <span class="updPct">${pct.toFixed(1)}%</span>
     </div>
   </div>`;
 }
