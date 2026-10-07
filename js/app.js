@@ -386,15 +386,6 @@ function renderEntryDetail(){
 
   logEl.querySelectorAll(".btnStart").forEach(b => b.onclick = () => logEvent(b.dataset.m, "start"));
   logEl.querySelectorAll(".btnStop").forEach(b => b.onclick = () => logEvent(b.dataset.m, "stop"));
-
-  const opts = machines.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
-  document.getElementById("shiftMachine").innerHTML = opts;
-  document.getElementById("readingMachine").innerHTML = opts;
-  document.getElementById("shiftDate").value = STORE.todayStr();
-  document.getElementById("readingDate").value = STORE.todayStr();
-
-  const shiftNameSel = document.getElementById("shiftName");
-  shiftNameSel.onchange = () => { document.getElementById("shiftHours").value = "12"; };
 }
 
 async function logEvent(machineId, type){
@@ -408,73 +399,6 @@ async function logEvent(machineId, type){
     renderEntryDetail();
     toast(`${type === "start" ? "Started" : "Stopped"} machine successfully`, "success");
   }catch(e){ toast("Failed to save: " + e.message, "error"); }
-}
-
-document.getElementById("shiftForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const date = document.getElementById("shiftDate").value;
-  const hours = Number(document.getElementById("shiftHours").value);
-  const machineId = document.getElementById("shiftMachine").value;
-  if(!date || !(hours > 0)){ toast("Please fill in date and a positive number of hours.", "error"); return; }
-  // Sanity check: a machine physically can't run more than 24h in one day.
-  // Warn (rather than silently accept) if this entry would push the day's
-  // logged shift total for this machine past that.
-  const alreadyLogged = STORE.hoursFromShifts(currentEntryPlant, machineId, date);
-  if(alreadyLogged + hours > 24){
-    toast(`That's ${(alreadyLogged + hours).toFixed(1)} hours logged for this machine on ${date} — more than a full day. Check the date/hours before saving.`, "error");
-    return;
-  }
-  const record = {
-    id: STORE.uid("sh"), plant_id: currentEntryPlant,
-    machine_id: machineId,
-    date, shift_name: document.getElementById("shiftName").value,
-    hours, by_username: AUTH.session.username
-  };
-  try{
-    await DB.insert("shifts", record);
-    STORE.shifts.push(STORE._mapShift(record));
-    document.getElementById("shiftHours").value = "12";
-    showEntryMsg("Shift hours saved successfully.");
-    if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
-  }catch(e){ toast("Failed to save: " + e.message, "error"); }
-});
-
-document.getElementById("readingForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const date = document.getElementById("readingDate").value;
-  const kw = Number(document.getElementById("readingKW").value);
-  const machineId = document.getElementById("readingMachine").value;
-  if(!date || !(kw >= 0)){ toast("Please fill in date and power reading.", "error"); return; }
-  // Sanity check: catch likely typos (e.g. extra digit) by comparing
-  // against the machine's rated kW, without blocking a genuine reading.
-  const machine = STORE.machineById(machineId);
-  if(machine && machine.ratedKW > 0 && kw > machine.ratedKW * 3){
-    const ok = await confirmDialog(
-      "Unusually high reading",
-      `${kw} kW is more than 3× ${machine.name}'s rated ${machine.ratedKW} kW. Save it anyway?`,
-      "Save anyway"
-    );
-    if(!ok) return;
-  }
-  const record = {
-    id: STORE.uid("rd"), plant_id: currentEntryPlant,
-    machine_id: machineId,
-    date, ts: new Date().toISOString(), kw, by_username: AUTH.session.username
-  };
-  try{
-    await DB.insert("readings", record);
-    STORE.readings.push({ id: record.id, plant: record.plant_id, machine: record.machine_id, date: record.date, timestamp: record.ts, kW: record.kw, by: record.by_username });
-    document.getElementById("readingKW").value = "";
-    showEntryMsg("Power reading saved successfully.");
-    if(!document.getElementById("view-dashboard").classList.contains("hidden")) renderDashboard();
-  }catch(e){ toast("Failed to save: " + e.message, "error"); }
-});
-
-function showEntryMsg(text){
-  const el = document.getElementById("entryMsg");
-  el.textContent = text;
-  el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 3000);
 }
 
 /* ---------------- Logs ----------------
