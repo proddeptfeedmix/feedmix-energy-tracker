@@ -80,37 +80,6 @@
     <div id="runLogList"></div>
   </div>
 
-  <div class="card">
-    <h3><span class="cardEyebrow">02</span>Shift-Based Hours</h3>
-    <p class="hint">Enter total hours operated for a shift instead of live logging.</p>
-    <form id="shiftForm">
-      <label>Machine<select id="shiftMachine"></select></label>
-      <div class="fieldRow">
-        <label>Date<input id="shiftDate" type="date"></label>
-        <label>Shift
-          <select id="shiftName">
-            <option>Morning Shift</option><option>Night Shift</option>
-          </select>
-        </label>
-      </div>
-      <label>Total Hours Operated<input id="shiftHours" type="number" step="0.1" min="0" max="24" class="mono" placeholder="12" value="12"></label>
-      <button type="submit" class="primary">Save Shift Hours</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3><span class="cardEyebrow">03</span>Actual Power Reading</h3>
-    <p class="hint">Measured kW overrides the machine's rated kW for that day's energy calculation.</p>
-    <form id="readingForm">
-      <label>Machine<select id="readingMachine"></select></label>
-      <div class="fieldRow">
-        <label>Date<input id="readingDate" type="date"></label>
-        <label>Measured Power (kW)<input id="readingKW" type="number" step="0.01" min="0" class="mono" placeholder="e.g. 45.5"></label>
-      </div>
-      <button type="submit" class="primary">Save Reading</button>
-    </form>
-  </div>
-  <p id="entryMsg" class="success hidden"></p>
 </main>
 
 <!-- LOGS -->
