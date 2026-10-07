@@ -11,21 +11,28 @@ const REPORTS = {
     doc.setFontSize(10);
     doc.text(`Period: ${fromStr} to ${toStr}`, 14, 23);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+    doc.setFontSize(8);
+    doc.text("Downtime = any time a machine is not running (24 h/day basis; today counts only the time elapsed so far).", 14, 33);
+    doc.setFontSize(10);
 
-    let y = 38;
+    let y = 42;
     let grandTotalKWh = 0;
 
     plants.forEach(plant => {
       const machines = STORE.machinesForPlant(plant.id);
-      let plantTotalKWh = 0, plantTotalHours = 0;
+      let plantTotalKWh = 0, plantUpMs = 0, plantDownMs = 0;
+      const pct = (up, down) => (up + down) > 0 ? (up / (up + down)) * 100 : 0;
       const rows = machines.map(m => {
-        let hours = 0, kwh = 0;
+        let kwh = 0;
         dates.forEach(d => {
-          const r = STORE.energyKWh(plant.id, m.id, d, m.ratedKW);
-          hours += r.hours; kwh += r.kwh;
+          kwh += STORE.energyKWh(plant.id, m.id, d, m.ratedKW).kwh;
         });
-        plantTotalHours += hours; plantTotalKWh += kwh;
-        return [m.name, m.category, m.ratedKW.toFixed(2), hours.toFixed(2), kwh.toFixed(2)];
+        // Uptime/downtime on a 24h-per-day basis (anything not running = down).
+        const u = STORE.uptimeStats(plant.id, m.id, fromStr, toStr);
+        plantUpMs += u.upMs; plantDownMs += u.downMs; plantTotalKWh += kwh;
+        return [m.name, m.category, m.ratedKW.toFixed(2),
+          (u.upMs / 3600000).toFixed(2), (u.downMs / 3600000).toFixed(2),
+          pct(u.upMs, u.downMs).toFixed(1) + "%", kwh.toFixed(2)];
       });
       grandTotalKWh += plantTotalKWh;
 
@@ -35,8 +42,9 @@ const REPORTS = {
       doc.setFontSize(9);
 
       // simple manual table (no autotable dependency, keeps it lightweight)
-      const colX = [14, 74, 114, 140, 166];
-      const headers = ["Machine", "Category", "Rated kW", "Hours", "kWh"];
+      const colX = [14, 54, 84, 108, 132, 156, 174];
+      const colW = [38, 28, 22, 22, 22, 16, 22]; // max text width per column (mm)
+      const headers = ["Machine", "Category", "Rated kW", "Uptime (h)", "Downtime (h)", "Uptime %", "kWh"];
       doc.setFont(undefined, "bold");
       headers.forEach((h, i) => doc.text(h, colX[i], y));
       doc.setFont(undefined, "normal");
@@ -45,12 +53,12 @@ const REPORTS = {
 
       rows.forEach(row => {
         if(y > 275){ doc.addPage(); y = 16; }
-        row.forEach((cell, i) => doc.text(String(cell), colX[i], y));
+        row.forEach((cell, i) => doc.text(doc.splitTextToSize(String(cell), colW[i])[0], colX[i], y));
         y += 5;
       });
 
       doc.setFont(undefined, "bold");
-      doc.text(`Plant Total: ${plantTotalHours.toFixed(2)} hrs, ${plantTotalKWh.toFixed(2)} kWh`, 14, y + 2);
+      doc.text(`Plant Total: Up ${(plantUpMs / 3600000).toFixed(2)} h, Down ${(plantDownMs / 3600000).toFixed(2)} h (${pct(plantUpMs, plantDownMs).toFixed(1)}% uptime), ${plantTotalKWh.toFixed(2)} kWh`, 14, y + 2);
       doc.setFont(undefined, "normal");
       y += 12;
     });

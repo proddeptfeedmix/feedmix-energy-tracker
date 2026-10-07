@@ -92,8 +92,17 @@ const STORE = {
     return this.config.plants.find(p => p.id === id);
   },
 
+  /* Local-calendar date string (YYYY-MM-DD). Do NOT use toISOString() for
+   * this: it is UTC, so in the Philippines (UTC+8) "today" would still read
+   * as yesterday between 00:00 and 08:00 local time. */
+  localDateStr(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  },
   todayStr(){
-    return new Date().toISOString().slice(0, 10);
+    return this.localDateStr(new Date());
   },
 
   /* Monday of the current week, and the 1st of the current month, as
@@ -102,12 +111,12 @@ const STORE = {
     const d = new Date();
     const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
     d.setDate(d.getDate() - dayIdx);
-    return d.toISOString().slice(0, 10);
+    return this.localDateStr(d);
   },
   monthStartStr(){
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0, 10);
+    return this.localDateStr(d);
   },
 
   /* Total operating hours for one machine across an inclusive date range
@@ -140,6 +149,41 @@ const STORE = {
     }
     if(openStart !== null) intervals.push({ start: openStart, end: null });
     return intervals;
+  },
+
+  /* Uptime / downtime for one machine over an inclusive date range, on a
+   * 24-hour-per-day basis: every moment the machine is NOT running counts
+   * as downtime. Each day contributes 24h, except today, which only
+   * contributes the time elapsed since local midnight (the future is not
+   * downtime), and dates after today, which are skipped.
+   *
+   * Uses the same per-day hours as operatingHours() (Start/Stop events,
+   * falling back to shift hours), so these numbers always agree with the
+   * "hours" shown elsewhere.
+   *
+   * Returns a snapshot taken at `asOf`. `live` is true when the range
+   * includes today, so the UI can keep ticking it every second: if the
+   * machine is running, uptime grows; otherwise downtime grows. */
+  uptimeStats(plantId, machineId, fromStr, toStr){
+    const asOf = Date.now();
+    const today = this.todayStr();
+    const last = toStr > today ? today : toStr;
+    let upMs = 0, totalMs = 0, live = false;
+
+    if(fromStr <= last){
+      this.dateRange(fromStr, last).forEach(d => {
+        const isToday = d === today;
+        const dayStart = new Date(d + "T00:00:00").getTime();
+        const dayMs = isToday ? Math.max(0, asOf - dayStart) : 86400000;
+        const ev = this.hoursFromEvents(plantId, machineId, d);
+        const hours = ev.hasEvents ? ev.hours : this.hoursFromShifts(plantId, machineId, d);
+        upMs += Math.min(hours * 3600000, dayMs);
+        totalMs += dayMs;
+        if(isToday) live = true;
+      });
+    }
+    const running = live && this.isRunning(plantId, machineId);
+    return { upMs, downMs: Math.max(0, totalMs - upMs), asOf, live, running };
   },
 
   /* Is a machine currently running (its most recent run interval still open)? */
@@ -239,7 +283,7 @@ const STORE = {
     let d = new Date(fromStr + "T00:00:00");
     const end = new Date(toStr + "T00:00:00");
     while(d <= end){
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(this.localDateStr(d));
       d.setDate(d.getDate() + 1);
     }
     return dates;

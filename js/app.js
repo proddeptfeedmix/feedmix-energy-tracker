@@ -12,10 +12,51 @@ function formatElapsed(ms){
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+
+/* ---- Uptime / downtime display ----
+ * One reusable block: a green/red bar plus UP / DOWN / % figures, driven by
+ * a STORE.uptimeStats() snapshot. The snapshot is stored in data-* attributes
+ * so tickLiveTimers() can advance it every second with no DB calls. */
+function uptimeBlockHtml(stats, opts = {}){
+  const { label = "", compact = false } = opts;
+  const total = stats.upMs + stats.downMs;
+  const pct = total > 0 ? (stats.upMs / total) * 100 : 0;
+  const state = stats.running ? "running" : "stopped";
+  return `<div class="updBlock ${compact ? "compact" : ""} ${state}" data-upd
+      data-up="${stats.upMs}" data-down="${stats.downMs}" data-asof="${stats.asOf}"
+      data-live="${stats.live ? 1 : 0}" data-running="${stats.running ? 1 : 0}">
+    ${label ? `<span class="updLabel">${label}</span>` : ""}
+    <div class="updBar" title="Green = uptime, red = downtime"><span class="updFill" style="width:${pct.toFixed(2)}%"></span></div>
+    <div class="updRow">
+      <span class="updUp"><i>UP</i><b class="updUpVal">${formatElapsed(stats.upMs)}</b></span>
+      <span class="updDown"><i>DOWN</i><b class="updDownVal">${formatElapsed(stats.downMs)}</b></span>
+      <span class="updPct">${pct.toFixed(1)}%</span>
+    </div>
+  </div>`;
+}
+
+function tickUptimeBlocks(){
+  const now = Date.now();
+  document.querySelectorAll("[data-upd]").forEach(el => {
+    let up = Number(el.dataset.up), down = Number(el.dataset.down);
+    if(el.dataset.live === "1"){
+      const delta = Math.max(0, now - Number(el.dataset.asof));
+      if(el.dataset.running === "1") up += delta; else down += delta;
+    }
+    const total = up + down;
+    const pct = total > 0 ? (up / total) * 100 : 0;
+    el.querySelector(".updUpVal").textContent = formatElapsed(up);
+    el.querySelector(".updDownVal").textContent = formatElapsed(down);
+    el.querySelector(".updPct").textContent = pct.toFixed(1) + "%";
+    el.querySelector(".updFill").style.width = pct.toFixed(2) + "%";
+  });
+}
+
 /* Ticks every second: updates any on-screen "elapsed" timer and any
  * running machine's live kWh figure, purely client-side (no DB calls),
  * so Start/Stop feels instantly real-time without hammering Supabase. */
 function tickLiveTimers(){
+  tickUptimeBlocks();
   document.querySelectorAll(".elapsed[data-start]").forEach(el => {
     const start = new Date(el.dataset.start);
     if(isNaN(start)) return;
@@ -280,15 +321,14 @@ function renderDashboard(){
       plantKWh += kwh;
       const startAttr = running ? ` data-start="${openStart.toISOString()}" data-base-kwh="${baseKwh}" data-kw="${kw}"` : "";
       const sourceTag = `<span class="sourceTag ${measured ? "measured" : "rated"}" title="${measured ? "Uses a logged actual power reading for today" : "No reading logged today — estimated from this machine's rated kW"}">${measured ? "MEASURED" : "RATED"}</span>`;
-      const todayHours = STORE.operatingHours(plant.id, m.id, today);
-      const weekHours = STORE.rangeHours(plant.id, m.id, weekStart, today);
-      const monthHours = STORE.rangeHours(plant.id, m.id, monthStart, today);
       return `<div class="machineRow">
         <div class="machineRowTop">
           <span class="machineName"><span class="lamp ${running ? "on" : ""}"></span>${m.name}</span>
           <span class="machineStat">${running ? "<strong style='color:var(--teal)'>RUNNING</strong>" : "STOPPED"} · <span class="kwh"${startAttr}>${kwh.toFixed(1)}</span> kWh${sourceTag}${running ? ` · <span class="elapsed" data-start="${openStart.toISOString()}">0:00:00</span>` : ""}</span>
         </div>
-        <div class="hoursBreakdown">Today <b>${todayHours.toFixed(1)}h</b> · This week <b>${weekHours.toFixed(1)}h</b> · This month <b>${monthHours.toFixed(1)}h</b></div>
+        ${uptimeBlockHtml(STORE.uptimeStats(plant.id, m.id, today, today), { label: "Today" })}
+        ${uptimeBlockHtml(STORE.uptimeStats(plant.id, m.id, weekStart, today), { label: "Week", compact: true })}
+        ${uptimeBlockHtml(STORE.uptimeStats(plant.id, m.id, monthStart, today), { label: "Month", compact: true })}
       </div>`;
     }).join("") || `<div class="emptyState" style="padding:20px"><p class="hint">No machines configured for this plant yet.</p></div>`;
 
@@ -335,6 +375,7 @@ function renderEntryDetail(){
     return `<div class="runLogRow">
       <div><span class="name">${m.name}</span><small>${m.category} · ${m.ratedKW} kW rated</small>
         ${running ? `<div class="elapsed" data-start="${openStart.toISOString()}" data-label="Running: ">Running: 0:00:00</div>` : ""}
+        ${uptimeBlockHtml(STORE.uptimeStats(currentEntryPlant, m.id, today, today), { label: "Today" })}
       </div>
       <div class="btnRow">
         <button class="btnStart" data-m="${m.id}" ${running ? "disabled" : ""}>Start</button>
@@ -492,7 +533,7 @@ function renderLogs(){
   if(!logsFilter.from || !logsFilter.to){
     const from = new Date();
     from.setDate(from.getDate() - 6);
-    logsFilter.from = from.toISOString().slice(0, 10);
+    logsFilter.from = STORE.localDateStr(from);
     logsFilter.to = STORE.todayStr();
   }
   const fromEl = document.getElementById("logsFrom");
@@ -553,19 +594,21 @@ function renderLogsTable(){
       STORE.machinesForPlant(p.id).filter(m => matchesMachine(m.id)).forEach(m => {
         summaryMachines.push({
           plantName: p.name, machineName: m.name,
-          hours: STORE.rangeHours(p.id, m.id, logsFilter.from, logsFilter.to)
+          hours: STORE.rangeHours(p.id, m.id, logsFilter.from, logsFilter.to),
+          stats: STORE.uptimeStats(p.id, m.id, logsFilter.from, logsFilter.to)
         });
       });
     });
     const summaryHtml = summaryMachines.length ? `<div class="runHoursSummary">${
       summaryMachines.map(s => `<div class="runHoursChip">
         <span class="runHoursMachine">${showPlantCol ? `${s.plantName} · ` : ""}${s.machineName}</span>
-        <span class="runHoursValue">${s.hours.toFixed(1)} hrs</span>
+        <span class="runHoursValue">${s.hours.toFixed(1)} hrs run</span>
+        ${uptimeBlockHtml(s.stats)}
       </div>`).join("")
     }</div>` : "";
 
     const rows = STORE.events
-      .filter(e => logsMatchesPlant(e.plant) && matchesMachine(e.machine) && logsInRange(e.timestamp.slice(0, 10)))
+      .filter(e => logsMatchesPlant(e.plant) && matchesMachine(e.machine) && logsInRange(STORE.localDateStr(new Date(e.timestamp))))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     wrap.innerHTML = summaryHtml + (rows.length ? `<table><tr>${plantHeader}<th>Date / Time</th><th>Machine</th><th>Type</th><th>By</th><th>Actions</th></tr>` +
       rows.map(r => {
